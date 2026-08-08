@@ -1,0 +1,17 @@
+# Block everything by default
+**/*
+
+# Runtime entry point & compiled output
+!out/**
+
+# VS Code manifest
+!package.json
+
+# Marketplace listing pages
+!README.md
+!CHANGELOG.md
+!LICENSE.md
+
+# Extension icons
+!images/icon-128.png
+!images/usage-icon.svg

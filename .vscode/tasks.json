@@ -1,0 +1,30 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "build",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": ["$tsc"],
+			"label": "npm: build",
+			"detail": "node esbuild.config.mjs --production"
+		},
+		{
+			"type": "npm",
+			"script": "bundle",
+			"problemMatcher": ["$tsc"],
+			"label": "npm: bundle",
+			"detail": "node esbuild.config.mjs"
+		},
+		{
+			"type": "npm",
+			"script": "typecheck",
+			"problemMatcher": ["$tsc"],
+			"label": "npm: typecheck",
+			"detail": "tsc --noEmit"
+		}
+	]
+}

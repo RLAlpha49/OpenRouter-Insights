@@ -1,0 +1,57 @@
+# Dependabot configuration — keeps npm dependencies and GitHub Actions up to date.
+# See: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  # npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "build"
+      prefix-development: "build"
+      include: "scope"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 10
+    versioning-strategy: "auto"
+    # Group minor/patch updates into a single PR to reduce noise
+    groups:
+      release-tooling:
+        patterns:
+          - "semantic-release"
+          - "@semantic-release/*"
+          - "@vscode/vsce"
+        update-types:
+          - "minor"
+          - "patch"
+      dev-deps:
+        patterns:
+          - "@types/*"
+          - "@stylistic/*"
+          - "typescript-eslint"
+          - "eslint"
+          - "prettier"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
+      esbuild:
+        patterns:
+          - "esbuild"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"

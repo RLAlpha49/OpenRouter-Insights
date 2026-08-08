@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+# Only one release process may mutate versions, tags, GitHub releases, and
+# Marketplace state at a time. A second run queues behind the first.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Semantic Release
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    # Prevent recursive releases — skip commits made by semantic-release bot
+    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, 'chore(release)')"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Audit dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Packaging is owned by semantic-release. The prepareCmd runs
+      # `npm run package:verified` to create the atomic, checksummed VSIX.
+      # The resulting VSIX and checksum are attached to the GitHub Release
+      # for manual Marketplace upload.
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run release
+
+      - name: Check artifact size
+        run: npm run size

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:coverage
+      - run: npm run format:check
+      - run: npm run bundle
+      - run: npm run size
+      - name: Audit for known vulnerabilities
+        run: npm audit --omit=dev --audit-level=moderate
+
+  state-db-platform:
+    name: State DB (${{ matrix.os }})
+    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: "npm"
+      - run: npm ci
+      - run: npm exec -- vitest run src/__tests__/models/state-db-locator.test.ts src/__tests__/models/state-db-reader.test.ts src/__tests__/models/sqlite-reader.test.ts src/__tests__/infrastructure/state-db-watcher.test.ts
+
+  package:
+    name: Package VSIX
+    needs: build
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Package Extension
+        run: npm run package:verified
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v7
+        with:
+          name: openrouter-insights
+          path: "openrouter-insights-*.vsix*"
