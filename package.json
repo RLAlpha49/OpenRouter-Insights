@@ -526,6 +526,7 @@
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run build",
+		"prepare": "npm run prepare:webview-assets",
 		"prepare:webview-assets": "node scripts/generate-webview-assets.mjs",
 		"build": "npm run prepare:webview-assets && node esbuild.config.mjs --production",
 		"bundle": "npm run prepare:webview-assets && node esbuild.config.mjs",
