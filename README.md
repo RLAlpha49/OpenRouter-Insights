@@ -10,10 +10,12 @@ Pricing works without an API key. Usage features require an OpenRouter API key.
 
 ## Screenshots
 
-[Status bar pricing](images/screenshots/status-bar-pricing.png)
-[Status bar usage](images/screenshots/status-bar-usage.png)
-[Model browser](images/screenshots/model-browser.png)
-[Usage dashboard](images/screenshots/usage-dashboard.png)
+<!-- markdownlint-disable MD033 -->
+<img src="images/screenshots/status-bar-pricing.png" alt="Status bar pricing" width="500">
+<img src="images/screenshots/status-bar-usage.png" alt="Status bar usage" width="500">
+<img src="images/screenshots/model-browser.png" alt="Model browser" width="700">
+<img src="images/screenshots/usage-dashboard.png" alt="Usage dashboard" width="800">
+<!-- markdownlint-enable MD033 -->
 
 ## Why use OpenRouter Insights?
 
