@@ -7,7 +7,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/RLAlpha49/OpenRouter-Insights.git"
+		"url": "https://github.com/RLAlpha49/OpenRouter-Insights"
 	},
 	"engines": {
 		"vscode": "^1.90.0",
