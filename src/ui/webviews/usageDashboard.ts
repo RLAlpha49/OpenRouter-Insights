@@ -216,9 +216,6 @@ function buildAnalyticsSection(
 			const analyticsModelId = model.modelId;
 			const displayModelId = pricingModel?.id || analyticsModelId;
 			const displayName = pricingModel?.name || deriveName(analyticsModelId);
-			log.debug(
-				`Analytics model ${analyticsModelId} resolved to display name "${displayName}" and pricing model ${pricingModel?.id ?? "none"}`,
-			);
 			const hasUsage = model.requestCount > 0 || model.tokensTotal > 0;
 			const isFreeUsage = model.totalUsage === 0 && hasUsage;
 			const freeBadge = isFreeUsage ? '<span class="or-model-free">FREE</span>' : "";
