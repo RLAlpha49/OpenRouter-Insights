@@ -20,22 +20,17 @@ import {
 import { BLEND, effectiveBlendWeights, type BlendWeights } from "../../models/domain";
 import { noopApiLogger, type ApiLogger } from "../logger";
 import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
-import { classifyError, createAbortController, fetchWithRetry } from "../transport/fetchHelpers";
-import { OpenRouterHttpError, parseOpenRouterErrorEnvelope } from "../transport/openRouterError";
-import { redactBodySnippet, redactUrl } from "../redaction";
-import { decodeModelsResponse, decodeOrThrow, mergeContractHealth } from "../contractDecoders";
-import {
-	buildEndpointUrl,
-	getEndpointContract,
-	getEndpointRetryPolicy,
-} from "../endpoint/endpointCatalog";
+import { classifyError, fetchWithRetry } from "../transport/fetchHelpers";
+import { OpenRouterHttpError } from "../transport/openRouterError";
+import { redactUrl } from "../redaction";
+import { mergeContractHealth } from "../contractDecoders";
+import { buildEndpointUrl, getEndpointRetryPolicy } from "../endpoint/endpointCatalog";
+import { EndpointClient } from "../transport/endpointClient";
 
 const DEFAULT_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const MODELS_RETRY = getEndpointRetryPolicy("models.list");
 const RETRY_MAX = MODELS_RETRY.maxRetries;
 const RETRY_BASE_MS = MODELS_RETRY.baseDelayMs;
-/** Maximum allowed response body size (10 MB). */
-const MAX_PAYLOAD_BYTES = 10 * 1024 * 1024;
 /** Maximum pages to fetch (to prevent infinite loops). */
 const MAX_PAGES = 5;
 /** Circuit breaker: max consecutive failures before exponential backoff across cycles. */
@@ -143,9 +138,10 @@ export class PricingFetcher {
 	private consecutiveFailures = 0;
 	private lastSuccessEpoch = 0;
 	private lastFailureEpoch = 0;
-	private lastETag: string | undefined;
-	private lastGoodResponse: OpenRouterModelsResponseBody | undefined;
-	private lastGoodContractHealth: ContractHealth | undefined;
+	private readonly pageCache = new Map<
+		string,
+		{ etag?: string; response: OpenRouterModelsResponseBody; health: ContractHealth }
+	>();
 
 	constructor(logger: ApiLogger = noopApiLogger) {
 		this._logger = logger;
@@ -376,198 +372,42 @@ export class PricingFetcher {
 		url: string,
 		externalSignal?: AbortSignal,
 	): Promise<PageResult> {
-		const { controller, dispose } = createAbortController(
-			getEndpointContract("models.list").timeoutMs,
-			externalSignal,
-		);
-
-		try {
-			this._logger.debug("doFetchModelsPage: sending GET", url);
-
-			const headers: Record<string, string> = {
-				Accept: "application/json",
-				"Accept-Encoding": "gzip",
+		const pageKey = new URL(url).href;
+		const cachedPage = this.pageCache.get(pageKey);
+		this._logger.debug("doFetchModelsPage: sending GET", url);
+		const headers: Record<string, string> = {
+			Accept: "application/json",
+			"Accept-Encoding": "gzip",
+		};
+		if (cachedPage?.etag) headers["If-None-Match"] = cachedPage.etag;
+		const endpointClient = new EndpointClient(client, {
+			apiKeyProvider: async () => "",
+			managementKeyProvider: async () => "",
+		});
+		const body = await endpointClient.request("models.list", {
+			url,
+			signal: externalSignal,
+			allowNotModified: true,
+			retry: { maxRetries: 1, baseDelayMs: 0 },
+			init: { headers: new Headers(headers) },
+		});
+		if (!body) {
+			if (!cachedPage) {
+				throw new OpenRouterHttpError({ label: "models", status: 304, errorClass: "client" });
+			}
+			return {
+				data: cachedPage.response.data,
+				links: cachedPage.response.links,
+				contractHealth: cachedPage.health,
 			};
-			if (this.lastETag) {
-				headers["If-None-Match"] = this.lastETag;
-			}
-
-			const res = await client.fetch(url, {
-				method: getEndpointContract("models.list").method,
-				endpointId: "models.list",
-				signal: controller.signal,
-				headers,
-			});
-
-			this._logger.debug("doFetchModelsPage: received HTTP", res.status, res.statusText);
-
-			this.logCompressionHeaders(res);
-			await this.handleHttpErrors(res);
-			if (res.status === 304 && this.lastGoodResponse) {
-				return {
-					data: this.lastGoodResponse.data,
-					links: this.lastGoodResponse.links,
-					contractHealth: this.lastGoodContractHealth ?? {
-						status: "valid",
-						issueCount: 0,
-						issues: [],
-					},
-				};
-			}
-			this.captureEtag(res);
-			const body = await this.readAndParseJsonBody(res);
-			this.validateModelsResponse(body.value);
-
-			// Cache the first-page response for ETag / 304 handling
-			this.lastGoodResponse ??= body.value;
-			this.lastGoodContractHealth ??= body.health;
-
-			return { data: body.value.data, links: body.value.links, contractHealth: body.health };
-		} finally {
-			dispose();
 		}
-	}
-
-	/** Handle 304, non-JSON, and error HTTP status codes. */
-	private async handleHttpErrors(res: Response): Promise<void> {
-		if (res.status === 304) {
-			this._logger.info("doFetchModelsPage: 304 Not Modified, using cached response");
-			if (this.lastGoodResponse) return;
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: 304,
-				headers: res.headers,
-				bodySnippet: "",
-			});
-		}
-
-		const contentType = res.headers.get("Content-Type") ?? "";
-		if (!contentType.includes("application/json")) {
-			this._logger.warn(`doFetchModelsPage: unexpected Content-Type: "${contentType}"`);
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: res.status,
-				errorClass: res.ok ? "malformed-response" : undefined,
-				headers: res.headers,
-				bodySnippet: "",
-			});
-		}
-
-		if (!res.ok) {
-			let bodySnippet = "";
-			try {
-				bodySnippet = (await res.text()).slice(0, 200);
-			} catch {
-				/* ignore */
-			}
-			const envelope = parseOpenRouterErrorEnvelope(bodySnippet);
-			const sanitized = redactBodySnippet(bodySnippet);
-			this._logger.warn(
-				"doFetchModelsPage: non-OK response",
-				envelope.type ? `type=${envelope.type}` : "",
-				sanitized || "<empty>",
-			);
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: res.status,
-				headers: res.headers,
-				envelope,
-				bodySnippet: sanitized,
-			});
-		}
-	}
-
-	/** Update the instance ETag from the response headers. */
-	private captureEtag(res: Response): void {
-		const etag = res.headers.get("ETag");
-		if (etag) this.lastETag = etag;
-	}
-
-	/**
-	 * Log compression/encoding response headers for diagnostics.
-	 * VS Code's fetch should transparently decompress gzip, but this
-	 * logging helps diagnose cases where the response arrives compressed
-	 * or Content-Length seems suspicious for decompressed JSON.
-	 */
-	private logCompressionHeaders(res: Response): void {
-		const contentEncoding = res.headers.get("Content-Encoding");
-		const contentLength = res.headers.get("Content-Length");
-		if (contentEncoding) {
-			this._logger.debug(
-				`doFetchModelsPage: Content-Encoding: ${contentEncoding}, Content-Length: ${contentLength ?? "unknown"}`,
-			);
-			if (contentLength) {
-				const length = Number(contentLength);
-				if (Number.isFinite(length) && length < 5000) {
-					this._logger.warn(
-						`doFetchModelsPage: Content-Length is suspiciously small (${length} bytes) ` +
-							`for a /models response. If Content-Encoding is "${contentEncoding}", ` +
-							"the fetch layer may not have decompressed the response.",
-					);
-				}
-			}
-		}
-	}
-
-	/** Read the response text, validate size, and parse as JSON. */
-	private async readAndParseJsonBody(
-		res: Response,
-	): Promise<ReturnType<typeof decodeOrThrow<OpenRouterModelsResponseBody>>> {
-		const contentLength = res.headers.get("Content-Length");
-		if (contentLength) {
-			const length = Number(contentLength);
-			if (!Number.isFinite(length) || length > MAX_PAYLOAD_BYTES) {
-				throw new OpenRouterHttpError({
-					label: "models",
-					status: res.status,
-					errorClass: "malformed-response",
-					envelope: {
-						message: `Response too large: ${length} bytes (max ${MAX_PAYLOAD_BYTES})`,
-					},
-				});
-			}
-		}
-
-		const text = await res.text();
-		if (text.length > MAX_PAYLOAD_BYTES) {
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: res.status,
-				errorClass: "malformed-response",
-				envelope: {
-					message: `Response too large: ${text.length} bytes (max ${MAX_PAYLOAD_BYTES})`,
-				},
-				bodySnippet: "",
-			});
-		}
-
-		try {
-			const body = JSON.parse(text) as unknown;
-			return decodeOrThrow("models.list", decodeModelsResponse, body);
-		} catch (err) {
-			if (err instanceof OpenRouterHttpError) throw err;
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: res.status,
-				errorClass: "malformed-response",
-				envelope: { message: "Failed to parse API response as JSON" },
-				bodySnippet: redactBodySnippet(text.slice(0, 120)),
-			});
-		}
-	}
-
-	/** Validate that body matches the expected schema, or throw. */
-	private validateModelsResponse(body: OpenRouterModelsResponseBody): void {
-		if (!body.data || !Array.isArray(body.data)) {
-			this._logger.warn("doFetchModelsPage: response schema mismatch — `data` is not an array");
-			throw new OpenRouterHttpError({
-				label: "models",
-				status: 200,
-				errorClass: "malformed-response",
-				envelope: { message: "Invalid API response schema: `data` must be an array" },
-				bodySnippet: "",
-			});
-		}
+		const response = body.value;
+		this.pageCache.set(pageKey, {
+			etag: body.responseHeaders?.get("ETag") ?? undefined,
+			response,
+			health: body.health,
+		});
+		return { data: response.data, links: response.links, contractHealth: body.health };
 	}
 }
 

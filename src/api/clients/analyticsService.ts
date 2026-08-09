@@ -17,19 +17,11 @@ import type {
 import type { ApiLogger } from "../logger";
 import { noopApiLogger } from "../logger";
 import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
-import { classifyError, createAbortController, fetchWithRetry } from "../transport/fetchHelpers";
-import { OpenRouterHttpError, parseOpenRouterErrorEnvelope } from "../transport/openRouterError";
-import { redactBodySnippet } from "../redaction";
-import { decodeAnalyticsResponse, decodeOrThrow } from "../contractDecoders";
+import { classifyError } from "../transport/fetchHelpers";
 import type { DecodedAnalyticsResponse } from "../contractDecoders";
-import {
-	buildEndpointUrl,
-	getEndpointContract,
-	getEndpointRetryPolicy,
-} from "../endpoint/endpointCatalog";
+import { EndpointClient } from "../transport/endpointClient";
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
-const ANALYTICS_RETRY = getEndpointRetryPolicy("analytics.query");
 const ANALYTICS_CACHE_TTL_MS = 60_000;
 
 /**
@@ -150,8 +142,6 @@ async function fetchModelSpendBreakdownUncached(
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
 ): Promise<AnalyticsResult> {
-	const analyticsUrl = buildEndpointUrl(baseUrl, "analytics.query");
-
 	const endDate = new Date();
 	const startDate = new Date(endDate);
 	startDate.setUTCDate(startDate.getUTCDate() - daysBack);
@@ -180,67 +170,16 @@ async function fetchModelSpendBreakdownUncached(
 	logger.debug(`AnalyticsService: querying ${dateFrom} → ${dateTo}`);
 
 	try {
-		const result = await fetchWithRetry(
-			async () => {
-				const { controller, dispose } = createAbortController(
-					getEndpointContract("analytics.query").timeoutMs,
-					signal,
-				);
-
-				try {
-					const endpoint = getEndpointContract("analytics.query");
-					const res = await client.fetch(analyticsUrl, {
-						method: endpoint.method,
-						endpointId: "analytics.query",
-						signal: controller.signal,
-						headers: {
-							Accept: "application/json",
-							"Content-Type": "application/json",
-							Authorization: `Bearer ${apiKey}`,
-						},
-						body: JSON.stringify(body),
-					});
-
-					if (!res.ok) {
-						let bodySnippet = "";
-						try {
-							bodySnippet = (await res.text()).slice(0, 200);
-						} catch {
-							/* ignore */
-						}
-						const envelope = parseOpenRouterErrorEnvelope(bodySnippet);
-						const sanitized = redactBodySnippet(bodySnippet);
-						logger.warn(
-							`AnalyticsService: ${res.status}`,
-							envelope.type ? `type=${envelope.type}` : "",
-							sanitized || "<empty>",
-						);
-						throw new OpenRouterHttpError({
-							label: "analytics",
-							status: res.status,
-							headers: res.headers,
-							envelope,
-							bodySnippet: sanitized,
-						});
-					}
-
-					return decodeOrThrow("analytics.query", decodeAnalyticsResponse, await res.json());
-				} finally {
-					dispose();
-				}
-			},
-			{
-				maxRetries: ANALYTICS_RETRY.maxRetries,
-				baseDelayMs: ANALYTICS_RETRY.baseDelayMs,
-				signal,
-				onAttempt: (attempt, err) => {
-					logger.warn(
-						`AnalyticsService attempt ${attempt}/${ANALYTICS_RETRY.maxRetries} failed (${err.kind}, HTTP ${err.code}):`,
-						err.message,
-					);
-				},
-			},
-		);
+		const endpointClient = new EndpointClient(client, {
+			apiKeyProvider: async () => apiKey,
+			managementKeyProvider: async () => apiKey,
+		});
+		const result = await endpointClient.request("analytics.query", {
+			baseUrl,
+			signal,
+			init: { body: JSON.stringify(body) },
+		});
+		if (!result) throw new Error("Analytics endpoint returned 304 without a cached response");
 
 		return buildAnalyticsResult(result.value, result.health);
 	} catch (err) {

@@ -33,18 +33,14 @@ import type {
 } from "../../types-usage";
 import type { ApiLogger } from "../logger";
 import { noopApiLogger } from "../logger";
-import { type HttpClient, type HttpRequestInit, defaultHttpClient } from "../transport/httpClient";
-import { classifyError, createAbortController, fetchWithRetry } from "../transport/fetchHelpers";
-import { OpenRouterHttpError, parseOpenRouterErrorEnvelope } from "../transport/openRouterError";
-import { redactUrl, redactBodySnippet } from "../redaction";
-import {
-	buildEndpointUrl,
-	getEndpointContract,
-	getEndpointRetryPolicy,
-} from "../endpoint/endpointCatalog";
+import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
+import { classifyError } from "../transport/fetchHelpers";
+import { OpenRouterHttpError } from "../transport/openRouterError";
+import { redactUrl } from "../redaction";
+import { buildEndpointUrl } from "../endpoint/endpointCatalog";
+import { EndpointClient } from "../transport/endpointClient";
 import { fetchModelSpendBreakdown } from "./analyticsService";
-import { decodeEndpointResponse, decodeOrThrow } from "../contractDecoders";
-import type { DecodeResult, DecodedResponse } from "../contractDecoders";
+import type { DecodedResponse } from "../contractDecoders";
 import type { ContractHealth } from "../../types";
 import type { EndpointId } from "../endpoint/endpointCatalog";
 
@@ -63,7 +59,6 @@ function getUrls(baseUrl: string = DEFAULT_BASE_URL) {
 	};
 }
 
-const RETRY_POLICY = getEndpointRetryPolicy("keys.current");
 /** Max concurrent per-key activity fetches to avoid rate limiting. */
 const ACTIVITY_CONCURRENCY = 3;
 
@@ -108,43 +103,6 @@ function failedContractHealth(endpointId: EndpointId, error: unknown): ContractH
 
 // ── Fetch helpers ──────────────────────────────────────────────
 
-/** Build the body string for a request, stripping undefined values. */
-function buildRequestBody(
-	method: string,
-	body: Record<string, unknown> | undefined,
-): string | undefined {
-	if (!body || method === "GET") return undefined;
-	const cleaned: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(body)) {
-		if (v !== undefined) cleaned[k] = v;
-	}
-	return Object.keys(cleaned).length > 0 ? JSON.stringify(cleaned) : undefined;
-}
-
-/** Throw a typed error for non-OK HTTP responses, capturing the OpenRouter error envelope. */
-async function throwHttpError(res: Response, label: string, logger: ApiLogger): Promise<never> {
-	let bodySnippet = "";
-	try {
-		bodySnippet = (await res.text()).slice(0, 200);
-	} catch {
-		/* ignore */
-	}
-	const envelope = parseOpenRouterErrorEnvelope(bodySnippet);
-	const sanitizedSnippet = redactBodySnippet(bodySnippet);
-	logger.warn(
-		`UsageService: ${label} returned ${res.status}`,
-		envelope.type ? `type=${envelope.type}` : "",
-		sanitizedSnippet || "<empty>",
-	);
-	throw new OpenRouterHttpError({
-		label,
-		status: res.status,
-		headers: res.headers,
-		envelope,
-		bodySnippet: sanitizedSnippet,
-	});
-}
-
 /**
  * Transport failure raised before any HTTP status is known.
  *
@@ -171,52 +129,22 @@ async function fetchJson<T>(
 	body?: Record<string, unknown>,
 	options: { signal?: AbortSignal; logger?: ApiLogger } = {},
 ): Promise<DecodedResponse<T>> {
-	const endpoint = getEndpointContract(endpointId);
-	const { controller, dispose } = createAbortController(endpoint.timeoutMs, options.signal);
 	const logger = options.logger ?? noopApiLogger;
-
+	logger.debug(`UsageService: ${endpointId}`);
 	try {
-		logger.debug(`UsageService: ${endpoint.method} ${redactUrl(url)} (${endpointId})`);
-
-		const init: HttpRequestInit = {
-			method: endpoint.method,
-			endpointId,
-			signal: controller.signal,
-			headers: {
-				Accept: "application/json",
-				Authorization: `Bearer ${apiKey}`,
-			},
-		};
-
-		const requestPayload = buildRequestBody(endpoint.method, body);
-		if (requestPayload) {
-			(init.headers as Record<string, string>)["Content-Type"] = "application/json";
-			init.body = requestPayload;
-		}
-
-		let res: Response;
-		try {
-			res = await client.fetch(url, init);
-		} catch (err) {
-			throw new UsageTransportError(endpointId, err);
-		}
-
-		if (!res.ok) await throwHttpError(res, endpointId, logger);
-
-		if (res.status === 204)
-			return { value: {} as T, health: { status: "valid", issueCount: 0, issues: [] } };
-
-		const responseBody = await res.json();
-		return decodeUsageResponse<T>(endpointId, responseBody);
-	} finally {
-		dispose();
+		const endpointClient = new EndpointClient(client, {
+			apiKeyProvider: async () => apiKey,
+			managementKeyProvider: async () => apiKey,
+		});
+		return (await endpointClient.request(endpointId, {
+			url,
+			signal: options.signal,
+			init: body ? { body: JSON.stringify(body) } : undefined,
+		})) as DecodedResponse<T>;
+	} catch (err) {
+		if (err instanceof OpenRouterHttpError) throw err;
+		throw new UsageTransportError(endpointId, err);
 	}
-}
-
-function decodeUsageResponse<T>(endpointId: EndpointId, input: unknown): DecodedResponse<T> {
-	const decoder = (value: unknown): DecodeResult<T> =>
-		decodeEndpointResponse(endpointId, value) as DecodeResult<T>;
-	return decodeOrThrow(endpointId, decoder, input) as DecodedResponse<T>;
 }
 
 // ── Public API ─────────────────────────────────────────────────
@@ -242,20 +170,7 @@ export async function fetchUsageStats(
 	logger.debug("UsageService: fetching usage from", urls.BASE_URL);
 
 	try {
-		return await fetchWithRetry(
-			() => doFetchAll(apiKey, selectedKeyHash, client, urls, logger, signal, onProgress),
-			{
-				maxRetries: RETRY_POLICY.maxRetries,
-				baseDelayMs: RETRY_POLICY.baseDelayMs,
-				signal,
-				onAttempt: (attempt, err) => {
-					logger.warn(
-						`UsageService attempt ${attempt}/${RETRY_POLICY.maxRetries} failed (${err.kind}):`,
-						err.message,
-					);
-				},
-			},
-		);
+		return await doFetchAll(apiKey, selectedKeyHash, client, urls, logger, signal, onProgress);
 	} catch (err) {
 		if (err instanceof OpenRouterHttpError) {
 			err.message = err.message.replace(/^OpenRouter [^ ]+ failed/, "OpenRouter API failed");

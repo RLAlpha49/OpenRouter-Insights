@@ -150,7 +150,7 @@ describe("usage commands", () => {
 												limit_reset: null,
 											},
 						}),
-						{ status: 200 },
+						{ status: 200, headers: { "Content-Type": "application/json" } },
 					),
 			),
 		} as any;
@@ -217,7 +217,7 @@ describe("usage commands", () => {
 												limit_reset: null,
 											},
 						}),
-						{ status: 200 },
+						{ status: 200, headers: { "Content-Type": "application/json" } },
 					),
 			),
 		} as any;
@@ -274,7 +274,7 @@ describe("usage commands", () => {
 								limit_reset: null,
 							},
 						}),
-						{ status: 200 },
+						{ status: 200, headers: { "Content-Type": "application/json" } },
 					),
 			),
 		} as any;

@@ -3,6 +3,9 @@ import {
 	NO_RETRY_POLICY,
 	OPENROUTER_ENDPOINTS,
 	TRANSIENT_RETRY_POLICY,
+	buildAnalyticsRequest,
+	buildKeyManagementRequest,
+	buildModelMetricsQuery,
 	getEndpointContract,
 	getEndpointRetryPolicy,
 } from "../../api/endpoint/endpointCatalog";
@@ -14,7 +17,39 @@ describe("OpenRouter endpoint catalog", () => {
 			expect(endpoint.docsUrl).toMatch(/^https:\/\/openrouter\.ai\/docs\//);
 			expect(endpoint.decoder).toBeTruthy();
 			expect(endpoint.path).toMatch(/^\/api\/v1\//);
+			expect(endpoint.responseLimitBytes).toBeGreaterThan(0);
 		}
+	});
+
+	it("builds the analytics request from its endpoint contract", () => {
+		const request = buildAnalyticsRequest({
+			start: "2026-08-01T00:00:00.000Z",
+			end: "2026-08-09T00:00:00.000Z",
+			limit: 25,
+		});
+
+		expect(request).toMatchObject({
+			method: "POST",
+			path: "/api/v1/analytics/query",
+			body: expect.objectContaining({
+				dimensions: ["model"],
+				limit: 25,
+			}),
+		});
+	});
+
+	it("builds validated key-management requests", () => {
+		expect(buildKeyManagementRequest("keys.create", { name: "new-key", limit: 10 })).toMatchObject({
+			method: "POST",
+			body: { name: "new-key", limit: 10 },
+		});
+		expect(() => buildKeyManagementRequest("keys.update", { hash: "bad/hash", name: "x" })).toThrow(
+			"Invalid API key hash",
+		);
+	});
+
+	it("builds model metrics query parameters from the endpoint contract", () => {
+		expect(buildModelMetricsQuery("openai/gpt-4o")).toBe("?max_results=100");
 	});
 
 	it("marks administrative endpoints as management-key protected", () => {

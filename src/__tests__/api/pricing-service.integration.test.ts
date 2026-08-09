@@ -411,7 +411,7 @@ describe("fetchModelPricing pagination", () => {
 			fetch: async (_url, init) => {
 				callCount++;
 				if (callCount === 1) return first;
-				expect((init?.headers as Record<string, string>)?.["If-None-Match"]).toBe('"models-v1"');
+				expect(new Headers(init?.headers).get("If-None-Match")).toBe('"models-v1"');
 				return second;
 			},
 		};

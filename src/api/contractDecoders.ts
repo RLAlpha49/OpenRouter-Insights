@@ -35,6 +35,8 @@ export interface DecodeResult<T> {
 export interface DecodedResponse<T> {
 	value: T;
 	health: ContractHealth;
+	responseStatus?: number;
+	responseHeaders?: Headers;
 }
 
 export interface DecodedModelsResponse {
@@ -72,6 +74,21 @@ export interface EndpointResponseMap {
 	"keys.update": UpdateKeyResponse;
 	"keys.delete": DeleteKeyResponse;
 }
+
+const ENDPOINT_DECODERS = {
+	models: decodeModelsResponse,
+	key: decodeKeyResponse,
+	keys: decodeKeysResponse,
+	credits: decodeCreditsResponse,
+	activity: decodeActivityResponse,
+	analytics: decodeAnalyticsResponse,
+	createKey: decodeCreateKeyResponse,
+	updateKey: decodeUpdateKeyResponse,
+	deleteKey: decodeDeleteKeyResponse,
+} satisfies Record<
+	Exclude<import("./endpoint/endpointCatalog").EndpointDecoder, "endpoints">,
+	DecodeFunction<unknown>
+>;
 
 function record(input: unknown): Record<string, unknown> | undefined {
 	return typeof input === "object" && input !== null && !Array.isArray(input)
@@ -116,13 +133,14 @@ function decodeModelEntry(input: unknown): Record<string, unknown> | undefined {
 	const item = record(input);
 	if (!item) return undefined;
 	if (!stringValue(item.id) || !stringValue(item.name)) return undefined;
-	if (numberValue(item.context_length) === undefined) return undefined;
+	const contextLength = numberValue(item.context_length);
+	if (contextLength === undefined) return undefined;
 	const pricing = record(item.pricing);
 	if (!pricing) return undefined;
-	if (!stringValue(pricing.prompt) && numberValue(pricing.prompt) === undefined) return undefined;
-	if (!stringValue(pricing.completion) && numberValue(pricing.completion) === undefined)
-		return undefined;
-	return item;
+	const prompt = numberValue(pricing.prompt);
+	const completion = numberValue(pricing.completion);
+	if (prompt === undefined || completion === undefined) return undefined;
+	return { ...item, context_length: contextLength, pricing: { ...pricing, prompt, completion } };
 }
 
 export function decodeModelsResponse(input: unknown): DecodeResult<DecodedModelsResponse> {
@@ -257,7 +275,16 @@ export function decodeCreditsResponse(input: unknown): DecodeResult<OpenRouterCr
 			{ path: "data", message: "Expected numeric total_credits and total_usage" },
 		]);
 	}
-	return result("valid", { data: data as unknown as OpenRouterCreditsResponse["data"] }, []);
+	return result(
+		"valid",
+		{
+			data: {
+				total_credits: numberValue(data.total_credits) as number,
+				total_usage: numberValue(data.total_usage) as number,
+			},
+		},
+		[],
+	);
 }
 
 export function decodeKeyResponse(input: unknown): DecodeResult<OpenRouterKeyResponse> {
@@ -281,7 +308,26 @@ export function decodeKeyResponse(input: unknown): DecodeResult<OpenRouterKeyRes
 		return result<OpenRouterKeyResponse>("invalid", undefined, [
 			{ path: "data", message: "Missing or invalid key fields" },
 		]);
-	return result("valid", { data: data as unknown as OpenRouterKeyResponse["data"] }, []);
+	return result(
+		"valid",
+		{
+			data: {
+				label: data.label as string,
+				usage: numberValue(data.usage) as number,
+				usage_daily: numberValue(data.usage_daily) as number,
+				usage_weekly: numberValue(data.usage_weekly) as number,
+				usage_monthly: numberValue(data.usage_monthly) as number,
+				limit: nullableNumberValue(data.limit) as number | null,
+				limit_remaining: nullableNumberValue(data.limit_remaining) as number | null,
+				limit_reset: nullableStringValue(data.limit_reset) as string | null,
+				is_free_tier: data.is_free_tier as boolean,
+				...(typeof data.is_management_key === "boolean"
+					? { is_management_key: data.is_management_key }
+					: {}),
+			},
+		},
+		[],
+	);
 }
 
 export function decodeKeysResponse(input: unknown): DecodeResult<OpenRouterKeysResponse> {
@@ -306,7 +352,23 @@ export function decodeKeysResponse(input: unknown): DecodeResult<OpenRouterKeysR
 			issues.push({ path: `data[${index}]`, message: "Missing or invalid key fields" });
 			return [];
 		}
-		return [entry as unknown as OpenRouterKeysResponse["data"][number]];
+		return [
+			{
+				hash: entry.hash as string,
+				label: entry.label as string,
+				name: entry.name as string,
+				disabled: entry.disabled as boolean,
+				usage: numberValue(entry.usage) as number,
+				usage_daily: numberValue(entry.usage_daily) as number,
+				usage_weekly: numberValue(entry.usage_weekly) as number,
+				usage_monthly: numberValue(entry.usage_monthly) as number,
+				limit: nullableNumberValue(entry.limit) as number | null,
+				limit_remaining: nullableNumberValue(entry.limit_remaining) as number | null,
+				limit_reset: nullableStringValue(entry.limit_reset) as string | null,
+				created_at: typeof entry.created_at === "string" ? entry.created_at : "",
+				updated_at: typeof entry.updated_at === "string" ? entry.updated_at : "",
+			},
+		];
 	});
 	return result(collectionStatus(issues, raw.length - data.length), { data }, issues);
 }
@@ -329,7 +391,31 @@ export function decodeActivityResponse(input: unknown): DecodeResult<OpenRouterA
 			issues.push({ path: `data[${index}]`, message: "Missing activity date, usage, or requests" });
 			return [];
 		}
-		return [entry as unknown as OpenRouterActivityResponse["data"][number]];
+		return [
+			{
+				date: entry.date as string,
+				usage: numberValue(entry.usage) as number,
+				requests: numberValue(entry.requests) as number,
+				...(typeof entry.model === "string" ? { model: entry.model } : {}),
+				...(typeof entry.model_permaslug === "string"
+					? { model_permaslug: entry.model_permaslug }
+					: {}),
+				...(typeof entry.provider_name === "string" ? { provider_name: entry.provider_name } : {}),
+				...(typeof entry.endpoint_id === "string" ? { endpoint_id: entry.endpoint_id } : {}),
+				...(numberValue(entry.byok_usage_inference) !== undefined
+					? { byok_usage_inference: numberValue(entry.byok_usage_inference) }
+					: {}),
+				...(numberValue(entry.prompt_tokens) !== undefined
+					? { prompt_tokens: numberValue(entry.prompt_tokens) }
+					: {}),
+				...(numberValue(entry.completion_tokens) !== undefined
+					? { completion_tokens: numberValue(entry.completion_tokens) }
+					: {}),
+				...(numberValue(entry.reasoning_tokens) !== undefined
+					? { reasoning_tokens: numberValue(entry.reasoning_tokens) }
+					: {}),
+			},
+		];
 	});
 	return result(collectionStatus(issues, raw.length - data.length), { data }, issues);
 }
@@ -392,27 +478,9 @@ export function decodeEndpointResponse<K extends EndpointId>(
 	input: unknown,
 ): DecodeResult<EndpointResponseMap[K]> {
 	const decoder = getEndpointContract(endpointId).decoder;
-	switch (decoder) {
-		case "models":
-			return decodeModelsResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "key":
-			return decodeKeyResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "keys":
-			return decodeKeysResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "credits":
-			return decodeCreditsResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "activity":
-			return decodeActivityResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "analytics":
-			return decodeAnalyticsResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "createKey":
-			return decodeCreateKeyResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "updateKey":
-			return decodeUpdateKeyResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-		case "deleteKey":
-			return decodeDeleteKeyResponse(input) as DecodeResult<EndpointResponseMap[K]>;
-	}
-	throw new Error(`Unsupported endpoint decoder: ${String(decoder)}`);
+	const decode = ENDPOINT_DECODERS[decoder as keyof typeof ENDPOINT_DECODERS];
+	if (!decode) throw new Error(`Unsupported endpoint decoder: ${String(decoder)}`);
+	return decode(input) as DecodeResult<EndpointResponseMap[K]>;
 }
 
 function healthOf<T>(decoded: DecodeResult<T>): ContractHealth {
@@ -437,13 +505,15 @@ export function decodeOrThrow<T>(
 	endpointId: EndpointId,
 	decoder: DecodeFunction<T>,
 	input: unknown,
+	responseStatus?: number,
 ): DecodedResponse<T> {
 	const decoded = decoder(input);
 	if (decoded.status === "invalid" || !decoded.value) {
 		const details = decoded.issues.map((issue) => `${issue.path} ${issue.message}`).join(", ");
 		throw new OpenRouterHttpError({
 			label: endpointId,
-			status: 200,
+			status: 0,
+			responseStatus,
 			errorClass: "malformed-response",
 			envelope: { message: `Invalid response: ${details}` },
 		});

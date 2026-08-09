@@ -113,6 +113,18 @@ describe("OpenRouterHttpError", () => {
 		const err = new OpenRouterHttpError({ label: "models", status: 404 });
 		expect(err.isRetryable).toBe(false);
 	});
+
+	it("separates malformed response status from the HTTP response status", () => {
+		const err = new OpenRouterHttpError({
+			label: "models.list",
+			status: 0,
+			responseStatus: 200,
+			errorClass: "malformed-response",
+		});
+		expect(err.status).toBe(0);
+		expect(err.responseStatus).toBe(200);
+		expect(err.toSummary()).toContain("transport");
+	});
 });
 
 describe("parseRetryAfterSeconds", () => {

@@ -128,6 +128,51 @@ describe("OpenRouter contract decoders", () => {
 		expect(decoded.value?.data[0].pricing).toEqual({ prompt: 0.000001, completion: 0.000002 });
 	});
 
+	it("normalizes numeric strings in usage, credits, activity, and key responses", () => {
+		const key = decodeKeyResponse({
+			data: {
+				label: "key",
+				usage: "1.5",
+				usage_daily: "0.5",
+				usage_weekly: "1",
+				usage_monthly: "1.5",
+				limit: "10",
+				limit_remaining: "8.5",
+				limit_reset: null,
+				is_free_tier: false,
+			},
+		});
+		const credits = decodeCreditsResponse({ data: { total_credits: "10", total_usage: "2.5" } });
+		const keys = decodeKeysResponse({
+			data: [
+				{
+					hash: "hash",
+					label: "key",
+					name: "name",
+					disabled: false,
+					usage: "1",
+					usage_daily: "1",
+					usage_weekly: "1",
+					usage_monthly: "1",
+					limit: "4",
+					limit_remaining: "3",
+					limit_reset: null,
+					created_at: "",
+					updated_at: "",
+				},
+			],
+		});
+		const activity = decodeActivityResponse({
+			data: [{ date: "2026-08-09", usage: "1.25", requests: "2" }],
+		});
+
+		expect(typeof key.value?.data.usage).toBe("number");
+		expect(key.value?.data.limit).toBe(10);
+		expect(credits.value?.data).toEqual({ total_credits: 10, total_usage: 2.5 });
+		expect(keys.value?.data[0].limit_remaining).toBe(3);
+		expect(activity.value?.data[0].usage).toBe(1.25);
+	});
+
 	it("decodes key-management responses by endpoint ID", () => {
 		expect(
 			decodeEndpointResponse("keys.create", {

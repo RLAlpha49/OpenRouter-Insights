@@ -83,6 +83,8 @@ export interface OpenRouterHttpErrorOptions {
 	label: string;
 	cause?: unknown;
 	status?: number;
+	/** Actual HTTP status when the failure is a malformed successful response. */
+	responseStatus?: number;
 	/** Explicit failure class for valid HTTP responses with malformed payloads. */
 	errorClass?: OpenRouterErrorClass;
 	/** OpenRouter error envelope values (already parsed/sanitized). */
@@ -99,6 +101,7 @@ export class OpenRouterHttpError extends Error {
 	readonly name = "OpenRouterHttpError";
 	readonly label: string;
 	readonly status: number;
+	readonly responseStatus: number | undefined;
 	readonly errorType: string;
 	/** Sanitized OpenRouter `error.message` (bounded, redacted). */
 	readonly apiMessage: string;
@@ -123,6 +126,7 @@ export class OpenRouterHttpError extends Error {
 		super(buildMessage(labelFor(options.label), status, envelope, options.bodySnippet));
 		this.label = labelFor(options.label);
 		this.status = status;
+		this.responseStatus = options.responseStatus;
 		this.errorType = envelope.type;
 		this.apiMessage = envelope.message;
 		this.errorClass = errorClass;
