@@ -16,6 +16,8 @@ import {
 	readItemTableValue,
 	readItemTableValueDetailed,
 	readItemTableValueWalAware,
+	readSnapshotSignature,
+	sameSnapshotSignature,
 	invalidateSchemaCache,
 } from "../../models/sqliteReader";
 
@@ -225,5 +227,99 @@ describe("per-snapshot index", () => {
 
 		expect(readItemTableValue(dbPath, "k1")).toBe("v1-updated");
 		expect(readItemTableValue(dbPath, "k2")).toBe("v2");
+	});
+});
+
+describe("WAL-aware snapshot signature (DB-002)", () => {
+	it("reports no WAL when only the main file exists", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		createStateDb(dbPath, [["k1", "v1"]]).close();
+		const sig = readSnapshotSignature(dbPath);
+		expect(sig.walPresent).toBe(false);
+		expect(sig.walSize).toBe(0);
+	});
+
+	it("reports the WAL identity once it is present", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const db = createStateDb(dbPath, [["k1", "v1"]]);
+		db.exec("PRAGMA journal_mode=WAL");
+		db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?").run("v2", "k1");
+		const sig = readSnapshotSignature(dbPath);
+		expect(sig.walPresent).toBe(true);
+		expect(sig.walSize).toBeGreaterThan(0);
+		db.close();
+	});
+
+	it("treats a WAL change as a different snapshot", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const db = createStateDb(dbPath, [["k1", "v1"]]);
+		db.exec("PRAGMA journal_mode=WAL");
+		const before = readSnapshotSignature(dbPath);
+		expect(sameSnapshotSignature(before, before)).toBe(true);
+
+		db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?").run("v3", "k1");
+		const after = readSnapshotSignature(dbPath);
+		expect(sameSnapshotSignature(before, after)).toBe(false);
+		db.close();
+	});
+
+	it("treats two absent WALs as the same signature", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		createStateDb(dbPath, [["k1", "v1"]]).close();
+		const a = readSnapshotSignature(dbPath);
+		const b = readSnapshotSignature(dbPath);
+		expect(sameSnapshotSignature(a, b)).toBe(true);
+	});
+});
+
+describe("partial B-tree scan surfacing (DB-003)", () => {
+	it("reports a complete scan for a healthy database", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		createStateDb(dbPath, [
+			["chat.currentLanguageModel.panel", '{"model":"openai/gpt-4o"}'],
+		]).close();
+
+		const result = readItemTableValueDetailed(dbPath, "chat.currentLanguageModel.panel");
+		expect(result.diagnostic).toBe("ok");
+		expect(result.scan?.complete).toBe(true);
+		expect(result.scan?.skippedPages).toBe(0);
+		expect(result.scan?.invalidCellPointers).toBe(0);
+	});
+
+	it("surfaces scan health alongside a capped WAL snapshot", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const db = createStateDb(dbPath, [["k1", "v1"]]);
+		db.exec("PRAGMA journal_mode=WAL");
+		db.exec("PRAGMA wal_autocheckpoint=0");
+		const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
+		for (let index = 0; index < 4097; index++) {
+			update.run(`v${index}`, "k1");
+		}
+
+		const result = readItemTableValueWalAware(dbPath, "k1");
+		db.close();
+
+		expect(result.diagnostic).toBe("wal-incomplete");
+		expect(result.scan).toBeDefined();
+	});
+
+	it("returns partial-scan (not no-match) when a leaf page is undecodable", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		// Enough rows to force an interior root with multiple leaf pages.
+		const rows: Array<[string, string]> = [];
+		for (let i = 0; i < 1000; i++) rows.push([`key-${i}`, `value-${i}`]);
+		createStateDb(dbPath, rows).close();
+
+		// Zero page 2 (a leaf page) so the B-tree walk skips it. The main
+		// file header (page 1, the schema root) stays intact so the database
+		// still opens, but the scan is no longer complete.
+		const buf = fs.readFileSync(dbPath);
+		buf.fill(0, 4096, 8192);
+		fs.writeFileSync(dbPath, buf);
+
+		const result = readItemTableValueDetailed(dbPath, "definitely-missing-key");
+		expect(result.diagnostic).toBe("partial-scan");
+		expect(result.scan?.complete).toBe(false);
+		expect(result.scan?.skippedPages).toBeGreaterThan(0);
 	});
 });

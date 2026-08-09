@@ -16,6 +16,24 @@ vi.mock("../../models/stateDbLocator", () => ({
 vi.mock("../../models/sqliteReader", () => ({
 	readItemTableValueWalAware: vi.fn(),
 	invalidateSchemaCache: vi.fn(),
+	readSnapshotSignature: vi.fn((p: string) => {
+		const stat = fs.statSync(p);
+		let walPresent = false;
+		try {
+			fs.statSync(`${p}-wal`);
+			walPresent = true;
+		} catch {
+			walPresent = false;
+		}
+		return {
+			dbMtimeMs: stat.mtimeMs,
+			dbSize: stat.size,
+			walPresent,
+			walMtimeMs: 0,
+			walSize: 0,
+		};
+	}),
+	sameSnapshotSignature: vi.fn(() => false),
 }));
 
 import { findStateDb } from "../../models/stateDbLocator";

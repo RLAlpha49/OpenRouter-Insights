@@ -12,7 +12,10 @@ import { parseModelIdentifier, parseRecentModel } from "./sqlModelParser";
 import { deriveName } from "./modelNameDeriver";
 import {
 	readItemTableValueWalAware,
+	readSnapshotSignature,
+	sameSnapshotSignature,
 	invalidateSchemaCache,
+	type SnapshotSignature,
 	type SqliteReadDiagnostic,
 } from "./sqliteReader";
 import type { StateReaderLogger } from "./sqlModelParser";
@@ -31,38 +34,19 @@ export interface StateDbResolution {
 	diagnostic: SqliteReadDiagnostic;
 }
 
-interface FileSignature {
-	mtimeMs: number;
-	size: number;
-	walMtimeMs: number;
-	walSize: number;
-}
-
 const RESULT_CACHE_TTL_MS = 15_000;
 const SNAPSHOT_RETRIES = 2;
 
-function sameSignature(a: FileSignature | undefined, b: FileSignature): boolean {
-	if (!a) return false;
-	return (
-		a.mtimeMs === b.mtimeMs &&
-		a.size === b.size &&
-		a.walMtimeMs === b.walMtimeMs &&
-		a.walSize === b.walSize
-	);
-}
-
-function readFileSignature(dbPath: string): FileSignature {
-	const stat = fs.statSync(dbPath);
-	let walMtimeMs = 0;
-	let walSize = 0;
-	try {
-		const walStat = fs.statSync(`${dbPath}-wal`);
-		walMtimeMs = walStat.mtimeMs;
-		walSize = walStat.size;
-	} catch {
-		// A missing WAL is a valid SQLite state.
-	}
-	return { mtimeMs: stat.mtimeMs, size: stat.size, walMtimeMs, walSize };
+/**
+ * Whether a single-key read result is safe enough to keep probing for the
+ * model id. `ok` and `no-match` are authoritative; `partial-scan` means the
+ * key may simply live on a page the reader could not decode, so we fall back
+ * to the recent-model key rather than giving up. `wal-incomplete`, `busy`,
+ * `corrupt`, `unsupported-schema`, `not-found` and `unreadable` stop the
+ * resolution because the snapshot itself is untrustworthy.
+ */
+function canContinueAfter(diagnostic: SqliteReadDiagnostic): boolean {
+	return diagnostic === "ok" || diagnostic === "no-match" || diagnostic === "partial-scan";
 }
 
 function readStableFileState(dbPath: string): Buffer | undefined {
@@ -87,7 +71,7 @@ function readStableFileState(dbPath: string): Buffer | undefined {
 
 export class StateDbReader {
 	private _lastDiagnostic: SqliteReadDiagnostic = "not-found";
-	private _lastSignature: FileSignature | undefined;
+	private _lastSignature: SnapshotSignature | undefined;
 	private _lastResult: ResolvedActiveModel | undefined;
 	private _lastResultAt = 0;
 
@@ -102,15 +86,18 @@ export class StateDbReader {
 			this._lastDiagnostic = "not-found";
 			this._lastResult = undefined;
 			this._lastResultAt = 0;
+			this._lastSignature = undefined;
 			log.debug("StateDbReader: state.vscdb not found, returning undefined");
 			return { diagnostic: "not-found" };
 		}
 
-		let signature: FileSignature;
+		let signature: SnapshotSignature;
 		try {
-			signature = readFileSignature(dbPath);
+			// The signature covers the main file and its companion WAL, so a
+			// commit that only lands in the WAL still invalidates this cache.
+			signature = readSnapshotSignature(dbPath);
 			if (
-				sameSignature(this._lastSignature, signature) &&
+				sameSnapshotSignature(this._lastSignature, signature) &&
 				Date.now() - this._lastResultAt < RESULT_CACHE_TTL_MS
 			) {
 				logger?.(
@@ -118,13 +105,14 @@ export class StateDbReader {
 				);
 				return { model: this._lastResult, diagnostic: this._lastDiagnostic };
 			}
-			if (!sameSignature(this._lastSignature, signature)) invalidateSchemaCache();
+			if (!sameSnapshotSignature(this._lastSignature, signature)) invalidateSchemaCache();
 			this._lastSignature = signature;
 		} catch (err) {
 			const errMsg = formatError(err);
 			this._lastDiagnostic = "unreadable";
 			this._lastResult = undefined;
 			this._lastResultAt = 0;
+			this._lastSignature = undefined;
 			logger?.(`[StateDbReader] failed to stat state.vscdb: ${errMsg}`);
 			log.debug(`StateDbReader: failed to stat state.vscdb: ${errMsg}`);
 			return { diagnostic: "unreadable" };
@@ -148,7 +136,7 @@ export class StateDbReader {
 			this._lastDiagnostic = panelResult.diagnostic;
 			const panelId = parseModelIdentifier(panelResult.value);
 			logger?.(`[StateDbReader] panel model id = ${panelId ?? "undefined"}`);
-			if (panelResult.diagnostic !== "ok" && panelResult.diagnostic !== "no-match") {
+			if (!canContinueAfter(panelResult.diagnostic)) {
 				this._lastResult = undefined;
 				this._lastResultAt = 0;
 				return { diagnostic: panelResult.diagnostic };
@@ -158,7 +146,7 @@ export class StateDbReader {
 			if (!panelId) {
 				const recentResult = readItemTableValueWalAware(dbPath, "chatModelRecentlyUsed", snapshot);
 				this._lastDiagnostic = recentResult.diagnostic;
-				if (recentResult.diagnostic !== "ok" && recentResult.diagnostic !== "no-match") {
+				if (!canContinueAfter(recentResult.diagnostic)) {
 					this._lastResult = undefined;
 					this._lastResultAt = 0;
 					return { diagnostic: recentResult.diagnostic };

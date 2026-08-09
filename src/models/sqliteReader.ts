@@ -26,12 +26,57 @@ export type SqliteReadDiagnostic =
 	| "unsupported-schema"
 	| "corrupt"
 	| "no-match"
+	| "partial-scan"
 	| "wal-unreadable"
 	| "wal-incomplete";
+
+/**
+ * Completeness of one B-tree walk over the `ItemTable`.
+ *
+ * The reader deliberately skips pages and cells it cannot decode instead of
+ * aborting, so a damaged database still yields the readable subset. These
+ * counters make that partial state explicit, so a key that is missing from
+ * an incomplete index is never reported as a confident `no-match`.
+ */
+export interface SnapshotScanHealth {
+	/** True when every reachable page and cell decoded successfully. */
+	complete: boolean;
+	/** Pages skipped because the page type was unrecognized or out of bounds. */
+	skippedPages: number;
+	/** Cell pointers that fell outside the page body. */
+	invalidCellPointers: number;
+	/** Cells whose payload or key could not be decoded. */
+	skippedCells: number;
+}
 
 export interface SqliteReadResult {
 	value?: string;
 	diagnostic: SqliteReadDiagnostic;
+	/** Completeness of the snapshot index the lookup was resolved against. */
+	scan?: SnapshotScanHealth;
+}
+
+/** Mutable counters accumulated while walking one snapshot. */
+interface ScanCounters {
+	skippedPages: number;
+	invalidCellPointers: number;
+	skippedCells: number;
+}
+
+function newScanCounters(): ScanCounters {
+	return { skippedPages: 0, invalidCellPointers: 0, skippedCells: 0 };
+}
+
+function toScanHealth(counters: ScanCounters): SnapshotScanHealth {
+	return {
+		complete:
+			counters.skippedPages === 0 &&
+			counters.invalidCellPointers === 0 &&
+			counters.skippedCells === 0,
+		skippedPages: counters.skippedPages,
+		invalidCellPointers: counters.invalidCellPointers,
+		skippedCells: counters.skippedCells,
+	};
 }
 
 const MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
@@ -140,9 +185,13 @@ interface BtreeCell {
  * content, so the b-tree header fields are at data[100], data[103], etc.
  * Cell offsets are always relative to the start of the page buffer.
  *
+ * Cell pointers that fall outside the page body are skipped and reported
+ * through `counters` so the caller can tell a complete scan from a partial
+ * one.
+ *
  * @returns null if the page type is unrecognised.
  */
-function parseBtreePage(data: Buffer, pageNum: number): BtreePage | null {
+function parseBtreePage(data: Buffer, pageNum: number, counters?: ScanCounters): BtreePage | null {
 	if (data.length === 0) return null;
 
 	const hdrOffset = pageNum === 1 ? 100 : 0;
@@ -167,10 +216,17 @@ function parseBtreePage(data: Buffer, pageNum: number): BtreePage | null {
 	const maxCellOffset = data.length;
 	for (let i = 0; i < numCells; i++) {
 		const ptrOffset = cellPointerArrayStart + i * 2;
-		if (ptrOffset + 2 > data.length) break;
+		if (ptrOffset + 2 > data.length) {
+			// The pointer array is truncated — every remaining cell is unreachable.
+			if (counters) counters.invalidCellPointers += numCells - i;
+			break;
+		}
 		const cellOffset = data.readUInt16BE(ptrOffset);
 		// Cell offset must point within the page (leaves room for at least 2 varints)
-		if (cellOffset < hdrOffset || cellOffset + 2 > maxCellOffset) continue;
+		if (cellOffset < hdrOffset || cellOffset + 2 > maxCellOffset) {
+			if (counters) counters.invalidCellPointers++;
+			continue;
+		}
 		const cell: BtreeCell = { offset: cellOffset };
 		if (isInterior) {
 			cell.leftChild = data.readUInt32BE(cellOffset);
@@ -363,15 +419,26 @@ function decodeColumnValue(
 	return String(intVal);
 }
 
-/** Push valid child page numbers of an interior page onto the stack. */
-function pushChildPages(stack: number[], page: BtreePage, maxPage: number): void {
+/**
+ * Push valid child page numbers of an interior page onto the stack.
+ * Child pointers outside the file are reported as skipped pages so the
+ * caller can treat the resulting index as incomplete.
+ */
+function pushChildPages(
+	stack: number[],
+	page: BtreePage,
+	maxPage: number,
+	counters?: ScanCounters,
+): void {
 	for (const cell of page.cells) {
-		if (cell.leftChild !== undefined && cell.leftChild > 0 && cell.leftChild <= maxPage) {
-			stack.push(cell.leftChild);
-		}
+		if (cell.leftChild === undefined) continue;
+		if (cell.leftChild > 0 && cell.leftChild <= maxPage) stack.push(cell.leftChild);
+		else if (counters) counters.skippedPages++;
 	}
 	if (page.rightMostPtr > 0 && page.rightMostPtr <= maxPage) {
 		stack.push(page.rightMostPtr);
+	} else if (counters) {
+		counters.skippedPages++;
 	}
 }
 
@@ -595,6 +662,68 @@ function computeWalAwareIdentity(dbPath: string, merged: Buffer, stat: fs.Stats)
 	return `${base}:wal:${walStat.size}:${walStat.mtimeMs}`;
 }
 
+/**
+ * Identity of the files that make up one readable snapshot: the main
+ * database plus its companion `-wal`.
+ *
+ * A WAL write changes the effective database contents without touching the
+ * main file, so any result cache keyed on the main file alone can keep
+ * serving a value the database has already replaced. Callers that cache
+ * parsed results share this signature instead of re-deriving their own.
+ */
+export interface SnapshotSignature {
+	dbMtimeMs: number;
+	dbSize: number;
+	/** True when a companion `-wal` file exists beside the database. */
+	walPresent: boolean;
+	walMtimeMs: number;
+	walSize: number;
+}
+
+/**
+ * Read the WAL-aware signature for a database path.
+ *
+ * Throws when the main database file cannot be stat'ed. A missing WAL is a
+ * valid SQLite state and is reported through `walPresent: false`, so a WAL
+ * that appears or disappears changes the signature.
+ */
+export function readSnapshotSignature(dbPath: string): SnapshotSignature {
+	const stat = fs.statSync(dbPath);
+	try {
+		const walStat = fs.statSync(`${dbPath}-wal`);
+		return {
+			dbMtimeMs: stat.mtimeMs,
+			dbSize: stat.size,
+			walPresent: true,
+			walMtimeMs: walStat.mtimeMs,
+			walSize: walStat.size,
+		};
+	} catch {
+		return {
+			dbMtimeMs: stat.mtimeMs,
+			dbSize: stat.size,
+			walPresent: false,
+			walMtimeMs: 0,
+			walSize: 0,
+		};
+	}
+}
+
+/** True when two signatures describe the same main-file and WAL state. */
+export function sameSnapshotSignature(
+	a: SnapshotSignature | undefined,
+	b: SnapshotSignature | undefined,
+): boolean {
+	if (!a || !b) return false;
+	return (
+		a.dbMtimeMs === b.dbMtimeMs &&
+		a.dbSize === b.dbSize &&
+		a.walPresent === b.walPresent &&
+		a.walMtimeMs === b.walMtimeMs &&
+		a.walSize === b.walSize
+	);
+}
+
 // ── Public API ─────────────────────────────────────────────────
 
 /** Cached ItemTable root page, keyed by snapshot identity. */
@@ -606,12 +735,29 @@ interface SnapshotIndex {
 	identity: string;
 	/** key → decoded value (column 1). */
 	values: Map<string, string>;
+	/** Completeness of the B-tree walk that produced `values`. */
+	scan: SnapshotScanHealth;
 	/** True when the index was built from a WAL-merged snapshot. */
 	walMerged: boolean;
 	/** True when the WAL was truncated at the frame cap and the snapshot may not contain the newest committed values. */
 	incomplete: boolean;
 }
 let _snapshotIndex: SnapshotIndex | undefined;
+
+/**
+ * Resolve a key against a built snapshot index.
+ *
+ * A hit is reported as `ok` because the decoded value is authoritative for
+ * that key. A miss against an incomplete scan is reported as `partial-scan`
+ * rather than `no-match`, so callers can distinguish "this key is absent"
+ * from "this key may live on a page the reader could not decode".
+ */
+function resolveFromIndex(index: SnapshotIndex, key: string): SqliteReadResult {
+	const value = index.values.get(key);
+	if (value !== undefined) return { value, diagnostic: "ok", scan: index.scan };
+	if (!index.scan.complete) return { diagnostic: "partial-scan", scan: index.scan };
+	return { diagnostic: "no-match", scan: index.scan };
+}
 
 /**
  * Read a single key's value from the `ItemTable` in a SQLite database file.
@@ -672,12 +818,16 @@ export function readItemTableValueDetailed(
 	if (_snapshotIndex?.identity !== identity) {
 		const index = buildSnapshotIndex(buffer, _itemTableRootPage, header);
 		if (!index) return { diagnostic: "corrupt" };
-		_snapshotIndex = { identity, values: index, walMerged: false, incomplete: false };
+		_snapshotIndex = {
+			identity,
+			values: index.values,
+			scan: index.scan,
+			walMerged: false,
+			incomplete: false,
+		};
 	}
 
-	const value = _snapshotIndex.values.get(key);
-	if (value === undefined) return { diagnostic: "no-match" };
-	return { value, diagnostic: "ok" };
+	return resolveFromIndex(_snapshotIndex, key);
 }
 
 /**
@@ -739,57 +889,80 @@ export function readItemTableValueWalAware(
 	if (_snapshotIndex?.identity !== identity) {
 		const index = buildSnapshotIndex(mergedBuffer, _itemTableRootPage, header);
 		if (!index) return { diagnostic: "corrupt" };
-		_snapshotIndex = { identity, values: index, walMerged: true, incomplete: walIncomplete };
+		_snapshotIndex = {
+			identity,
+			values: index.values,
+			scan: index.scan,
+			walMerged: true,
+			incomplete: walIncomplete,
+		};
 	}
 
-	if (walIncomplete) return { diagnostic: "wal-incomplete" };
+	if (walIncomplete) return { diagnostic: "wal-incomplete", scan: _snapshotIndex.scan };
 
-	const value = _snapshotIndex.values.get(key);
-	if (value === undefined) return { diagnostic: "no-match" };
-	return { value, diagnostic: "ok" };
+	return resolveFromIndex(_snapshotIndex, key);
+}
+
+/** One decoded snapshot index plus the completeness of the walk that built it. */
+interface SnapshotIndexResult {
+	values: Map<string, string>;
+	scan: SnapshotScanHealth;
 }
 
 /**
  * Decode every ItemTable row into a key → value map.
+ *
  * Bounded by the same payload and visited-page limits as single-key reads.
+ * Undecodable pages and cells are skipped rather than fatal, and are
+ * reported through the returned scan health. Returns undefined only when a
+ * hard bound is exceeded or a record body is structurally undecodable.
  */
 function buildSnapshotIndex(
 	buffer: Buffer,
 	rootPage: number,
 	header: SqliteHeader,
-): Map<string, string> | undefined {
+): SnapshotIndexResult | undefined {
 	const maxPage = Math.ceil(buffer.length / header.pageSize);
 	const visited = new Set<number>();
 	const stack: number[] = [rootPage];
-	const index = new Map<string, string>();
+	const values = new Map<string, string>();
+	const counters = newScanCounters();
 
 	while (stack.length > 0) {
 		const pageNum = stack.pop();
 		if (pageNum === undefined) continue;
-		if (pageNum < 1 || pageNum > maxPage || visited.has(pageNum)) continue;
+		if (pageNum < 1 || pageNum > maxPage) {
+			counters.skippedPages++;
+			continue;
+		}
+		if (visited.has(pageNum)) continue;
 		visited.add(pageNum);
 		if (visited.size > MAX_VISITED_PAGES) return undefined;
 
 		const pageData = readPage(buffer, pageNum, header);
-		const page = parseBtreePage(pageData, pageNum);
-		if (!page) continue;
-
-		if (page.type === "interior") {
-			pushChildPages(stack, page, maxPage);
+		const page = parseBtreePage(pageData, pageNum, counters);
+		if (!page) {
+			counters.skippedPages++;
 			continue;
 		}
 
-		if (!scanLeafIntoIndex(pageData, page.cells, buffer, header, index)) {
+		if (page.type === "interior") {
+			pushChildPages(stack, page, maxPage, counters);
+			continue;
+		}
+
+		if (!scanLeafIntoIndex(pageData, page.cells, buffer, header, values, counters)) {
 			return undefined;
 		}
 	}
 
-	return index;
+	return { values, scan: toScanHealth(counters) };
 }
 
 /**
  * Decode every cell on a leaf page into the index.
- * Returns false when a cell payload cannot be decoded (corrupt snapshot).
+ * Cells whose payload or key cannot be decoded are counted as skipped.
+ * Returns false when a record body is undecodable (corrupt snapshot).
  */
 function scanLeafIntoIndex(
 	pageData: Buffer,
@@ -797,12 +970,19 @@ function scanLeafIntoIndex(
 	buffer: Buffer,
 	header: SqliteHeader,
 	index: Map<string, string>,
+	counters: ScanCounters,
 ): boolean {
 	for (const cell of cells) {
 		const cp = readCellPayload(pageData, cell, buffer, header);
-		if (!cp) continue;
+		if (!cp) {
+			counters.skippedCells++;
+			continue;
+		}
 		const cellKey = decodeColumn(cp.payload, 0);
-		if (cellKey === null) continue;
+		if (cellKey === null) {
+			counters.skippedCells++;
+			continue;
+		}
 		let value: string | undefined;
 		try {
 			value = decodeColumn(cp.payload, 1) ?? undefined;
