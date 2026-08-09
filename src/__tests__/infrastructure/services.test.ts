@@ -5,6 +5,7 @@ import { RefreshScheduler } from "../../infrastructure/refreshScheduler";
 import { registerCommands } from "../../infrastructure/commandRegistrar";
 import { FeatureRegistry } from "../../infrastructure/featureRegistry";
 import { createServices } from "../../infrastructure/services";
+import * as analyticsService from "../../api/clients/analyticsService";
 import { RefreshCoordinator } from "../../infrastructure/refreshCoordinator";
 import { RuntimeDiagnostics } from "../../infrastructure/runtimeDiagnostics";
 import { Logger, formatError, formatErrorBrief, initLogger } from "../../infrastructure/logger";
@@ -169,6 +170,46 @@ describe("service composition", () => {
 		const coordinator = new RefreshCoordinator(diagnostics);
 		expect(coordinator.diagnostics).toBe(diagnostics);
 		coordinator.dispose();
+	});
+});
+
+describe("credential-change invalidation boundary", () => {
+	it("clears authenticated derived data when the key is set or removed", async () => {
+		const clearSpy = vi.spyOn(analyticsService, "clearAnalyticsCache");
+		const generationSpy = vi.spyOn(analyticsService, "setCredentialGeneration");
+
+		let stored: string | undefined;
+		const context = {
+			globalState: { get: vi.fn(), update: vi.fn(async () => {}) },
+			secrets: {
+				store: vi.fn(async (_k: string, value: string) => {
+					stored = value;
+				}),
+				get: vi.fn(async () => stored),
+				delete: vi.fn(async () => {
+					stored = undefined;
+				}),
+			},
+			subscriptions: [],
+			extensionPath: "C:/extension",
+		} as any;
+
+		const services = createServices(context);
+		clearSpy.mockClear();
+		generationSpy.mockClear();
+
+		await services.secrets.set("sk-or-v1-" + "e".repeat(32));
+		expect(generationSpy).toHaveBeenCalledWith(1);
+		expect(clearSpy).toHaveBeenCalled();
+
+		await services.secrets.delete();
+		expect(generationSpy).toHaveBeenCalledWith(2);
+		expect(clearSpy).toHaveBeenCalledTimes(2);
+
+		services.dispose();
+		services.dispose();
+		clearSpy.mockRestore();
+		generationSpy.mockRestore();
 	});
 });
 

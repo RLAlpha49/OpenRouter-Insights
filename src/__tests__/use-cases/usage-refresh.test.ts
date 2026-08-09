@@ -467,4 +467,69 @@ describe("UsageRefreshUseCase", () => {
 		expect(failures[0]).toMatchObject({ label: "usage" });
 		expect(failures[0].error.length).toBeLessThanOrEqual(240);
 	});
+
+	it("coalesces identical detail requests into a single in-flight load", async () => {
+		secrets._seededKey("sk-or-test");
+		const baseline = createManagementUsageStats();
+		let resolveDetails: ((_value: UsageStats) => void) | undefined;
+		const pending = new Promise<UsageStats>((resolve) => {
+			resolveDetails = resolve;
+		});
+		vi.mocked(fetchUsageDetails).mockReturnValue(pending);
+
+		const useCase = new UsageRefreshUseCase(
+			cache,
+			secrets as any,
+			statusBar as any,
+			dashboard as any,
+			createFakeReadonlyConfig(),
+		);
+
+		const first = useCase.loadDetails(false, createRefreshContext("user"), baseline);
+		const second = useCase.loadDetails(false, createRefreshContext("user"), baseline);
+
+		await vi.waitFor(() => expect(fetchUsageDetails).toHaveBeenCalledTimes(1));
+		resolveDetails?.({ ...baseline, dailyUsageHistory: [] });
+		await Promise.all([first, second]);
+	});
+
+	it("replaces a superseded detail request when the analytics flag changes", async () => {
+		secrets._seededKey("sk-or-test");
+		const baseline = createManagementUsageStats();
+		let resolveSecond: ((_value: UsageStats) => void) | undefined;
+		const secondPending = new Promise<UsageStats>((resolve) => {
+			resolveSecond = resolve;
+		});
+		vi.mocked(fetchUsageDetails).mockReturnValue(secondPending);
+
+		const useCase = new UsageRefreshUseCase(
+			cache,
+			secrets as any,
+			statusBar as any,
+			dashboard as any,
+			createFakeReadonlyConfig(),
+		);
+
+		const first = useCase.loadDetails(false, createRefreshContext("user"), baseline);
+		const second = useCase.loadDetails(true, createRefreshContext("user"), baseline);
+
+		// The superseded (false) request is aborted before it fetches, so only
+		// the new (true) request reaches the network.
+		await vi.waitFor(() => expect(fetchUsageDetails).toHaveBeenCalledTimes(1));
+		expect(fetchUsageDetails).toHaveBeenCalledWith(
+			expect.any(String),
+			undefined,
+			expect.objectContaining({ includeAnalytics: true, lookbackDays: 30 }),
+			undefined,
+			"https://openrouter.ai",
+			expect.any(AbortSignal),
+			expect.any(Function),
+		);
+
+		// The first (superseded) request must not publish.
+		resolveSecond?.({ ...baseline, dailyUsageHistory: [{ date: "2026-08-02", usage: 2, requests: 2 }] });
+		await Promise.all([first, second]);
+
+		expect(cache.get()?.dailyUsageHistory?.[0]).toMatchObject({ date: "2026-08-02" });
+	});
 });

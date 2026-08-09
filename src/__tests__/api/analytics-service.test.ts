@@ -4,12 +4,14 @@ import {
 	ANALYTICS_ROW_BUDGET,
 	clearAnalyticsCache,
 	fetchModelSpendBreakdown,
+	setCredentialGeneration,
 } from "../../api/clients/analyticsService";
 
 import { beforeEach, vi } from "vitest";
 
 beforeEach(() => {
 	clearAnalyticsCache();
+	setCredentialGeneration(0);
 	vi.useRealTimers();
 });
 
@@ -191,5 +193,23 @@ describe("fetchModelSpendBreakdown", () => {
 		expect(result.totalSpend).toBe(2);
 		expect(result.contractHealth).toMatchObject({ status: "partial", issueCount: 1 });
 		expect(result.contractHealth?.issues[0].path).toBe("data[1]");
+	});
+
+	it("invalidates a cached result when the credential generation changes", async () => {
+		let calls = 0;
+		const client: HttpClient = {
+			fetch: async () => {
+				calls++;
+				return jsonResponse({ data: [] });
+			},
+		};
+
+		await fetchModelSpendBreakdown("sk-rotate", 30, client);
+		expect(calls).toBe(1);
+
+		setCredentialGeneration(1);
+
+		await fetchModelSpendBreakdown("sk-rotate", 30, client);
+		expect(calls).toBe(2);
 	});
 });

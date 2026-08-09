@@ -67,6 +67,7 @@ import { PricingFetcher } from "../api/clients/pricingService";
 import { defaultHttpClient } from "../api/transport/httpClient";
 import { HttpPipeline, withEndpointPolicy, withLogging } from "../api/transport/httpPipeline";
 import { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { setCredentialGeneration, clearAnalyticsCache } from "../api/clients/analyticsService";
 
 export interface RuntimeServices {
 	readonly cache: IPricingCache;
@@ -193,6 +194,15 @@ export function createServices(context: ExtensionContext): ServiceContainer {
 	const showLoading = () => statusBar.showLoading();
 	const clearLoading = () => statusBar.clearLoading();
 
+	// Single credential-change invalidation boundary for authenticated derived
+	// data. Rotation or removal advances SecretStorageService's generation and
+	// clears the process-local analytics cache so results from a previous
+	// credential are never served afterwards.
+	const credentialChangeSubscription = secrets.onCredentialChange((event) => {
+		setCredentialGeneration(event.generation);
+		clearAnalyticsCache();
+	});
+
 	// ── Command instances ──────────────────────────────────
 	const commandMap = new Map<string, ICommand>();
 
@@ -243,6 +253,7 @@ export function createServices(context: ExtensionContext): ServiceContainer {
 	const dispose = () => {
 		if (disposed) return;
 		disposed = true;
+		credentialChangeSubscription.dispose();
 		// ExtensionRuntime owns the coordinator lifetime; the container owns
 		// services created here and may be disposed independently in tests.
 		features.dispose();

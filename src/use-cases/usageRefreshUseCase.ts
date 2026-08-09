@@ -30,6 +30,7 @@ export class UsageRefreshUseCase {
 	private _detailsPending: Promise<void> | undefined;
 	private _selectedKeyHash: string | undefined;
 	private _detailContext: RefreshContext | undefined;
+	private _detailsRequestKey: string | undefined;
 	private _generation = 0;
 
 	// eslint-disable-next-line max-params
@@ -205,10 +206,18 @@ export class UsageRefreshUseCase {
 		baseline?: UsageStats,
 		generation = this._generation,
 	): Promise<void> {
-		if (this._detailsPending) return this._detailsPending;
+		// Coalesce only when the requested scope matches what is already in
+		// flight. A different selected key, analytics flag, lookback, or refresh
+		// generation means the prior intent is stale, so abort it and start the
+		// requested load instead of silently reusing the wrong result.
+		const requestKey = this._detailRequestKeyOf(includeAnalytics, generation);
+		if (this._detailsPending && this._detailsRequestKey === requestKey) {
+			return this._detailsPending;
+		}
 
 		this._detailContext?.abort();
 		this._detailContext = ctx;
+		this._detailsRequestKey = requestKey;
 		const operation = this._loadDetailsInternal(includeAnalytics, ctx, baseline, generation);
 		this._detailsPending = operation;
 		try {
@@ -216,7 +225,14 @@ export class UsageRefreshUseCase {
 		} finally {
 			if (this._detailsPending === operation) this._detailsPending = undefined;
 			if (this._detailContext === ctx) this._detailContext = undefined;
+			if (this._detailsRequestKey === requestKey) this._detailsRequestKey = undefined;
 		}
+	}
+
+	private _detailRequestKeyOf(includeAnalytics: boolean, generation: number): string {
+		return `${this._selectedKeyHash ?? ""}:${includeAnalytics}:${
+			this._config.usageAnalyticsLookbackDays
+		}:${generation}`;
 	}
 
 	private async _loadDetailsInternal(
@@ -285,6 +301,7 @@ export class UsageRefreshUseCase {
 		this._generation++;
 		this._detailContext?.abort();
 		this._detailContext = undefined;
+		this._detailsRequestKey = undefined;
 		this._cache.clear();
 		this._selectedKeyHash = undefined;
 		this._statusBar.showNoKey();

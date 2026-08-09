@@ -43,6 +43,22 @@ const analyticsCache = new Map<string, CachedAnalyticsResult>();
 const clientIds = new WeakMap<object, number>();
 let nextClientId = 1;
 
+/**
+ * Credential generation observed from SecretStorageService. Analytics results
+ * are derived under a specific credential, so the request key embeds this value
+ * and the cache is cleared on change. Only the non-secret counter is stored —
+ * never the key material.
+ */
+let credentialGeneration = 0;
+
+/** Align the analytics cache with the current credential generation. */
+export function setCredentialGeneration(generation: number): void {
+	if (generation !== credentialGeneration) {
+		credentialGeneration = generation;
+		clearAnalyticsCache();
+	}
+}
+
 function validateAnalyticsRequest(apiKey: string, daysBack: number): void {
 	if (!apiKey.trim()) throw new Error("Analytics API key cannot be empty");
 	if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 365) {
@@ -74,7 +90,7 @@ function analyticsRequestKey(
 	const endDate = new Date();
 	const startDate = new Date(endDate);
 	startDate.setUTCDate(startDate.getUTCDate() - daysBack);
-	return `${getClientId(client)}:${hash >>> 0}:${daysBack}:${startDate.toISOString().slice(0, 10)}:${endDate.toISOString().slice(0, 10)}:${baseUrl}`;
+	return `${getClientId(client)}:${hash >>> 0}:${daysBack}:${startDate.toISOString().slice(0, 10)}:${endDate.toISOString().slice(0, 10)}:${baseUrl}:g${credentialGeneration}`;
 }
 
 /** Clear process-local analytics results after a credential or test boundary. */
