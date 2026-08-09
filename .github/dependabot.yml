@@ -29,6 +29,13 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      compiler-aliases:
+        patterns:
+          - "typescript"
+          - "@typescript/native"
+        update-types:
+          - "minor"
+          - "patch"
       dev-deps:
         patterns:
           - "@types/*"
