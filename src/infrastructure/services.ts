@@ -63,6 +63,7 @@ import {
 } from "./usageCommands";
 import { ConfigService } from "./config";
 import { RefreshCoordinator } from "./refreshCoordinator";
+import type { RefreshReason } from "./refreshContext";
 import { PricingFetcher } from "../api/clients/pricingService";
 import { defaultHttpClient } from "../api/transport/httpClient";
 import { HttpPipeline, withEndpointPolicy, withLogging } from "../api/transport/httpPipeline";
@@ -81,7 +82,7 @@ export interface RuntimeServices {
 	readonly eventBus: EventBus;
 	readonly refreshCoordinator: RefreshCoordinator;
 	readonly doRefresh: () => Promise<void>;
-	readonly doUsageRefresh: () => Promise<void>;
+	readonly doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
 	readonly diagnostics: RuntimeDiagnostics;
 }
 
@@ -109,7 +110,7 @@ export interface ServiceContainer extends RuntimeServices, CommandServices, vsco
 	/** Trigger a full pricing refresh, then update the status bar. */
 	doRefresh: () => Promise<void>;
 	/** Trigger a usage refresh. */
-	doUsageRefresh: () => Promise<void>;
+	doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
 	/** Show a loading indicator in the status bar (idempotent). */
 	showLoading: () => void;
 	/** Clear the loading indicator on the status bar. */
@@ -185,8 +186,8 @@ export function createServices(context: ExtensionContext): ServiceContainer {
 		});
 	};
 
-	const doUsageRefresh = async () => {
-		await refreshCoordinator.acquire("usage", "user", (ctx) =>
+	const doUsageRefresh = async (reason: RefreshReason = "user") => {
+		await refreshCoordinator.acquire("usage", reason, (ctx) =>
 			usageRefreshUseCase.execute(undefined, ctx),
 		);
 	};

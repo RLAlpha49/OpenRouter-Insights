@@ -14,9 +14,10 @@ import { log } from "./logger";
 export class UsagePollingService implements vscode.Disposable {
 	private _timer: ReturnType<typeof setInterval> | undefined;
 	private _disposed = false;
+	private _pending: Promise<void> | undefined;
 
 	constructor(
-		private readonly _onTick: () => void,
+		private readonly _onTick: () => void | Promise<void>,
 		private readonly _config?: Pick<
 			ReadonlyConfig,
 			"usageBackgroundPollingEnabled" | "usageAutoRefreshInterval"
@@ -37,12 +38,24 @@ export class UsagePollingService implements vscode.Disposable {
 		const interval = config.usageAutoRefreshInterval;
 		if (interval > 0) {
 			this._timer = setInterval(() => {
-				if (!this._disposed) this._onTick();
+				void this.trigger();
 			}, interval * 1000);
 			log.info(`Usage refresh timer started: ${interval}s`);
 		} else {
 			log.info("Usage refresh timer disabled (interval=0)");
 		}
+	}
+
+	/** Start one refresh and let overlapping ticks await the same operation. */
+	trigger(): Promise<void> {
+		if (this._disposed) return Promise.resolve();
+		if (this._pending) return this._pending;
+
+		const operation = Promise.resolve(this._onTick());
+		this._pending = operation.finally(() => {
+			if (this._pending === operation) this._pending = undefined;
+		});
+		return this._pending;
 	}
 
 	dispose(): void {

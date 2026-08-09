@@ -187,7 +187,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 		}
 
 		this.usagePolling = new UsagePollingService(() =>
-			this.runInBackground("usage refresh", () => this._services.doUsageRefresh()),
+			this.runInBackground("usage refresh", () => this._services.doUsageRefresh("scheduled")),
 		);
 		const usageResource = vscode.Disposable.from(
 			this.usagePolling,

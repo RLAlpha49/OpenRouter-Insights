@@ -92,6 +92,23 @@ describe("lifecycle integrity", () => {
 		expect(vi.isMockFunction).toBeTypeOf("function");
 	});
 
+	it("coalesces overlapping scheduled usage ticks", async () => {
+		let release!: () => void;
+		const refresh = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
+		const usage = new UsagePollingService(refresh, {
+			usageBackgroundPollingEnabled: true,
+			usageAutoRefreshInterval: 0,
+		});
+
+		const first = usage.trigger();
+		const second = usage.trigger();
+
+		expect(refresh).toHaveBeenCalledTimes(1);
+		release();
+		await Promise.all([first, second]);
+		usage.dispose();
+	});
+
 	it("keeps repeated configuration reads stable", () => {
 		const config = ConfigService.instance;
 		expect(config.features).toEqual(config.features);
