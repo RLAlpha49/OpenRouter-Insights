@@ -59,6 +59,78 @@
 		setLiveText("Loading progress: ", message.progressText);
 		return true;
 	}
+	function captureInteractionState(root) {
+		const active = document.activeElement;
+		const controls = Array.from(root.querySelectorAll("input, select, textarea")).map(
+			function (control) {
+				return {
+					id: control.id,
+					name: control.name,
+					tagName: control.tagName,
+					value: control.value,
+					checked: typeof control.checked === "boolean" ? control.checked : undefined,
+				};
+			},
+		);
+		return {
+			scrollY: window.scrollY,
+			activeKey: active?.closest?.("[data-key-focus]")?.dataset.keyFocus,
+			activeModel: active?.closest?.("[data-model-id]")?.dataset.modelId,
+			revealedModels: Array.from(root.querySelectorAll("[data-model-extra='true']"))
+				.filter(function (element) {
+					return element.style.display !== "none";
+				})
+				.map(function (element) {
+					return element.dataset.modelId;
+				}),
+			controls: controls,
+		};
+	}
+	function findControl(root, state) {
+		const controls = Array.from(root.querySelectorAll("input, select, textarea"));
+		return (
+			controls.find(function (control) {
+				return state.id && control.id === state.id;
+			}) ||
+			controls.find(function (control) {
+				return (
+					state.name &&
+					control.name === state.name &&
+					control.tagName === state.tagName &&
+					control.value === state.value
+				);
+			})
+		);
+	}
+	function restoreInteractionState(root, state) {
+		if (!state) return;
+		(state.controls || []).forEach(function (controlState) {
+			const control = findControl(root, controlState);
+			if (!control) return;
+			if (typeof controlState.checked === "boolean") control.checked = controlState.checked;
+			if (typeof controlState.value === "string" && control.tagName !== "INPUT")
+				control.value = controlState.value;
+		});
+		(state.revealedModels || []).forEach(function (modelId) {
+			const row = Array.from(root.querySelectorAll("[data-model-id]")).find(function (element) {
+				return element.dataset.modelId === modelId;
+			});
+			if (row) row.style.display = "";
+		});
+		initializeModelSpend();
+		let focusTarget = null;
+		if (state.activeKey) {
+			focusTarget = Array.from(root.querySelectorAll("[data-key-focus]")).find(function (element) {
+				return element.dataset.keyFocus === state.activeKey;
+			});
+		} else if (state.activeModel) {
+			focusTarget = Array.from(root.querySelectorAll("[data-model-id]")).find(function (element) {
+				return element.dataset.modelId === state.activeModel;
+			});
+		}
+		if (focusTarget instanceof HTMLElement) focusTarget.focus();
+		if (typeof state.scrollY === "number") window.scrollTo(0, state.scrollY);
+	}
 	function findRequestElement(requestId) {
 		const elements = document.querySelectorAll("[data-request-id]");
 		return Array.from(elements).find(function (element) {
@@ -69,27 +141,26 @@
 		if (typeof message.html !== "string") return false;
 		const root = document.querySelector(".or-root");
 		if (!root) return true;
-		const active = document.activeElement;
-		const activeKey = active?.closest?.("[data-key-focus]")?.dataset.keyFocus;
-		const activeModel = active?.closest?.("[data-model-id]")?.dataset.modelId;
-		const revealedModels = Array.from(root.querySelectorAll("[data-model-extra='true']"))
-			.filter(function (element) {
-				return element.style.display !== "none";
-			})
-			.map(function (element) {
-				return element.dataset.modelId;
-			});
+		const interactionState = captureInteractionState(root);
 		root.innerHTML = message.html;
-		revealedModels.forEach(function (modelId) {
-			const row = root.querySelector('[data-model-id="' + modelId + '"]');
-			if (row) row.style.display = "";
-		});
-		initializeModelSpend();
-		let focusTarget = null;
-		if (activeKey) focusTarget = root.querySelector('[data-key-focus="' + activeKey + '"]');
-		else if (activeModel) focusTarget = root.querySelector('[data-model-id="' + activeModel + '"]');
-		if (focusTarget instanceof HTMLElement) focusTarget.focus();
+		restoreInteractionState(root, interactionState);
 		setLiveText("Dashboard updated. ", message.liveText);
+		return true;
+	}
+	function handleUpdateRegion(message) {
+		if (typeof message.region !== "string" || !/^[a-z][a-z0-9-]*$/.test(message.region))
+			return false;
+		if (typeof message.html !== "string") return false;
+		const root = document.querySelector(".or-root");
+		if (!root) return true;
+		const target = Array.from(root.querySelectorAll("[data-region]")).find(function (element) {
+			return element.dataset.region === message.region;
+		});
+		if (!target) return true;
+		const interactionState = captureInteractionState(root);
+		target.innerHTML = message.html;
+		restoreInteractionState(root, interactionState);
+		setLiveText("Dashboard section updated. ", message.liveText);
 		return true;
 	}
 	function handleCommandMessage(message) {
@@ -195,6 +266,10 @@
 		const message = event.data;
 		if (message?.cmd === "updateHtml") {
 			handleUpdateHtml(message);
+			return;
+		}
+		if (message?.cmd === "updateRegion") {
+			handleUpdateRegion(message);
 			return;
 		}
 		if (message?.cmd === "commandPending" || message?.cmd === "commandResult") {

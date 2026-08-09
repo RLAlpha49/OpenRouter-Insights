@@ -288,9 +288,13 @@ describe("UsageDashboardProvider", () => {
 		// Render with identical data - should be skipped
 		provider.renderUsage(initialUsage);
 
-		// No updateHtml message should be sent
+		// No dashboard update message should be sent
 		const updateMessages = viewMessages.filter(
-			(m) => m && typeof m === "object" && "cmd" in m && m.cmd === "updateHtml",
+			(m) =>
+				m &&
+				typeof m === "object" &&
+				"cmd" in m &&
+				(m.cmd === "updateHtml" || m.cmd === "updateRegion"),
 		);
 		expect(updateMessages).toHaveLength(0);
 	});
@@ -324,7 +328,11 @@ describe("UsageDashboardProvider", () => {
 		provider.renderUsage(changedUsage);
 
 		const updateMessages = viewMessages.filter(
-			(m) => m && typeof m === "object" && "cmd" in m && m.cmd === "updateHtml",
+			(m) =>
+				m &&
+				typeof m === "object" &&
+				"cmd" in m &&
+				(m.cmd === "updateHtml" || m.cmd === "updateRegion"),
 		);
 		expect(updateMessages).toHaveLength(1);
 	});

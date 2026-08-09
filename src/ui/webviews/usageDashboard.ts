@@ -23,6 +23,7 @@ import { ConfigService, getCurrency, getCurrencyRate } from "../../infrastructur
 import { attr, text, PALETTE, buildDashboardDocument } from "../webviewAssets";
 import { log } from "../../infrastructure/logger";
 import { deriveName } from "../../models/modelNameDeriver";
+import { formatShortDateLabel, formatTimestamp } from "../formatting/formatting";
 
 /** Color for a usage percentage. */
 function pctColor(pct: number | null): string {
@@ -43,27 +44,6 @@ function wrapWideHtml(bodyContent: string): string {
 }
 
 // ── Chart ──────────────────────────────────────────────────────
-
-/** Convert ISO date "2026-07-30" to "Jul 30". */
-function formatDateLabel(dateStr: string): string {
-	const months = [
-		"Jan",
-		"Feb",
-		"Mar",
-		"Apr",
-		"May",
-		"Jun",
-		"Jul",
-		"Aug",
-		"Sep",
-		"Oct",
-		"Nov",
-		"Dec",
-	];
-	const m = Number.parseInt(dateStr.slice(5, 7), 10) - 1;
-	const d = Number.parseInt(dateStr.slice(8, 10), 10);
-	return `${months[m]} ${d}`;
-}
 
 /** Build the bar chart bars + grid lines + average overlay + legend. */
 function buildChartBars(
@@ -99,10 +79,10 @@ function buildChartBars(
 			const isToday = p.date === today;
 			const isEst = estimated && isToday;
 			const dateLabel = showLabel
-				? `<div class="or-chart-label" style="left:${left + barWidth / 2}%">${formatDateLabel(p.date)}</div>`
+				? `<div class="or-chart-label" style="left:${left + barWidth / 2}%">${formatShortDateLabel(p.date)}</div>`
 				: "";
 			const estNote = isEst ? " (estimated)" : "";
-			const tooltip = `${formatDateLabel(p.date)}: ${formatCurrencyPrice(p.usage, currency, rate)}${estNote} · ${p.requests.toLocaleString()} requests`;
+			const tooltip = `${formatShortDateLabel(p.date)}: ${formatCurrencyPrice(p.usage, currency, rate)}${estNote} · ${p.requests.toLocaleString()} requests`;
 			const barClass = isEst ? "or-chart-bar or-chart-bar--estimated" : "or-chart-bar";
 			return (
 				`<div class="${barClass}" style="left:${left}%;width:${barWidth}%;height:${height}%" title="${attr(tooltip)}" aria-hidden="true"></div>` +
@@ -476,7 +456,11 @@ function buildActionsFooter(wide: boolean): string {
 }
 
 function buildFooter(usage: UsageStats): string {
-	return `<div class="or-footer">Updated ${new Date(usage.fetchedAt).toLocaleString()}</div>`;
+	return `<div class="or-footer">Updated ${text(formatTimestamp(usage.fetchedAt))}</div>`;
+}
+
+function region(id: string, content: string): string {
+	return `<div data-region="${id}">${content}</div>`;
 }
 
 // ── Main dashboard HTML ─────────────────────────────────────────
@@ -499,6 +483,40 @@ export function buildDashboardBody(
 	wide: boolean,
 	pricing?: IPricingIndex,
 ): string {
+	const regions = buildDashboardRegionMap(usage, wide, pricing);
+	const order = wide
+		? [
+				"hero",
+				"top-grid",
+				"activity",
+				"analytics",
+				"capabilities",
+				"key-selector",
+				"free-tier",
+				"actions",
+				"footer",
+			]
+		: [
+				"hero",
+				"credits",
+				"activity",
+				"analytics",
+				"capabilities",
+				"keys",
+				"key-selector",
+				"free-tier",
+				"actions",
+				"footer",
+			];
+	return order.map((id) => region(id, regions[id] ?? "")).join("\n");
+}
+
+/** Build unwrapped region content for incremental webview updates. */
+export function buildDashboardRegionMap(
+	usage: UsageStats,
+	wide: boolean,
+	pricing?: IPricingIndex,
+): Record<string, string> {
 	const pct = usage.usagePercent;
 	const color = pctColor(pct);
 	const mgmt = usage.isManagementKey;
@@ -531,43 +549,26 @@ export function buildDashboardBody(
 		.filter(Boolean)
 		.map((message) => `<p class="or-info">${text(message)}</p>`)
 		.join("");
-	// In wide mode, arrange credits + selected key side-by-side
-	if (wide) {
-		const topGrid =
-			creditsSection || selectedKeyDetail
-				? `<div class="or-grid">${creditsSection}${selectedKeyDetail}</div>`
-				: "";
-		return `
-		<div class="or-hero">
+	return {
+		hero: `<div class="or-hero">
 			<div class="or-hero-label">${headerLabel}${badge}</div>
 			<div class="${heroAmountClass}" style="color:${headerColor}">${fmtUsd(headerAmount)}</div>
 			<div class="or-hero-sub">${keyTypeLabel} key · ${cur}</div>
-		</div>
-		${topGrid}
-		${activitySection}
-		${analyticsSection}
-		${capabilityNotice}
-		${keySelectorSection}
-		${freeTierNote}
-		${buildActionsFooter(wide)}
-		${buildFooter(usage)}`;
-	}
-
-	return `
-	<div class="or-hero">
-		<div class="or-hero-label">${headerLabel}${badge}</div>
-		<div class="${heroAmountClass}" style="color:${headerColor}">${fmtUsd(headerAmount)}</div>
-		<div class="or-hero-sub">${keyTypeLabel} key · ${cur}</div>
-	</div>
-	${creditsSection}
-	${activitySection}
-	${analyticsSection}
-	${capabilityNotice}
-	${selectedKeyDetail}
-	${keySelectorSection}
-	${freeTierNote}
-	${buildActionsFooter(wide)}
-	${buildFooter(usage)}`;
+		</div>`,
+		"top-grid":
+			wide && (creditsSection || selectedKeyDetail)
+				? `<div class="or-grid">${region("credits", creditsSection)}${region("keys", selectedKeyDetail)}</div>`
+				: "",
+		credits: creditsSection,
+		activity: activitySection,
+		analytics: analyticsSection,
+		capabilities: capabilityNotice,
+		keys: selectedKeyDetail,
+		"key-selector": keySelectorSection,
+		"free-tier": freeTierNote,
+		actions: buildActionsFooter(wide),
+		footer: buildFooter(usage),
+	};
 }
 
 function buildDashboardHtml(usage: UsageStats, pricing?: IPricingIndex): string {
@@ -669,6 +670,8 @@ export class UsageDashboardProvider implements vscode.WebviewViewProvider {
 	/** Latest body HTML, replayed after the webview bridge is ready. */
 	private _latestBody: string | undefined;
 	private _latestBodyWide: string | undefined;
+	private _latestRegions: Record<string, string> | undefined;
+	private _latestRegionsWide: Record<string, string> | undefined;
 
 	constructor(private readonly _pricing?: IPricingIndex) {}
 
@@ -785,8 +788,12 @@ export class UsageDashboardProvider implements vscode.WebviewViewProvider {
 
 		const body = buildDashboardBody(usage, false, this._pricing);
 		const bodyWide = buildDashboardBody(usage, true, this._pricing);
+		const regions = buildDashboardRegionMap(usage, false, this._pricing);
+		const regionsWide = buildDashboardRegionMap(usage, true, this._pricing);
 
-		this._postOrQueue(body, bodyWide, () => buildDashboardHtml(usage, this._pricing));
+		this._postOrQueue(body, bodyWide, regions, regionsWide, () =>
+			buildDashboardHtml(usage, this._pricing),
+		);
 	}
 
 	/**
@@ -983,16 +990,49 @@ export class UsageDashboardProvider implements vscode.WebviewViewProvider {
 	 * queued full-document render for the sidebar when the view hasn't
 	 * resolved yet.
 	 */
-	private _postOrQueue(body: string, bodyWide: string, fallbackFullDoc: () => string): void {
+	private _postOrQueue(
+		body: string,
+		bodyWide: string,
+		regions: Record<string, string>,
+		regionsWide: Record<string, string>,
+		fallbackFullDoc: () => string,
+	): void {
+		const previousRegions = this._latestRegions;
+		const previousRegionsWide = this._latestRegionsWide;
 		this._latestBody = body;
 		this._latestBodyWide = bodyWide;
+		this._latestRegions = regions;
+		this._latestRegionsWide = regionsWide;
 		if (this._view) {
-			this._view.webview.postMessage({ cmd: "updateHtml", html: body });
+			if (previousRegions) {
+				this._postChangedRegions(this._view.webview, previousRegions, regions);
+			} else {
+				this._view.webview.postMessage({ cmd: "updateHtml", html: body });
+			}
 		} else {
 			this._pendingRender = fallbackFullDoc;
 		}
 		if (this._panel) {
-			this._panel.webview.postMessage({ cmd: "updateHtml", html: bodyWide });
+			if (previousRegionsWide) {
+				this._postChangedRegions(this._panel.webview, previousRegionsWide, regionsWide);
+			} else {
+				this._panel.webview.postMessage({ cmd: "updateHtml", html: bodyWide });
+			}
+		}
+	}
+
+	private _postChangedRegions(
+		source: vscode.Webview,
+		previous: Record<string, string>,
+		current: Record<string, string>,
+	): void {
+		for (const [region, html] of Object.entries(current)) {
+			if (current["top-grid"] && (region === "credits" || region === "keys")) {
+				continue;
+			}
+			if (previous[region] !== html) {
+				void source.postMessage({ cmd: "updateRegion", region, html });
+			}
 		}
 	}
 
