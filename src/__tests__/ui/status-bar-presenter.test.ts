@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildStatusBarViewModel } from "../../ui/status/statusBarPresenter";
+import { formatTimestamp } from "../../ui/formatting/formatting";
 import type { ModelPricingInfo, CachedPricingData } from "../../types";
 
 function makeModel(overrides?: Partial<ModelPricingInfo>): ModelPricingInfo {
@@ -94,7 +95,7 @@ describe("buildStatusBarViewModel", () => {
 		const fetchedAt = "2026-08-03T16:18:44.000Z";
 		const vm = buildStatusBarViewModel("GPT-4o", model, { fetchedAt, models: [model] });
 		const tooltip = (vm.tooltip as { value: string }).value;
-		const updated = `*Updated ${new Date(fetchedAt).toLocaleString()}*`;
+		const updated = `*Updated ${formatTimestamp(fetchedAt)}*`;
 		const actionLinks = "[$(refresh) Refresh]";
 
 		expect(tooltip).toContain(updated);
@@ -102,14 +103,14 @@ describe("buildStatusBarViewModel", () => {
 		expect(tooltip.indexOf(updated)).toBeLessThan(tooltip.indexOf(actionLinks));
 	});
 
-	it("formats the pricing update timestamp using the local date and time", () => {
+	it("formats the pricing update timestamp using the shared UTC policy", () => {
 		const fetchedAt = "2026-08-02T12:00:00.000Z";
 		const cache = makeCacheData([makeModel()]);
 		cache.fetchedAt = fetchedAt;
 		const vm = buildStatusBarViewModel("GPT-4o", makeModel(), cache);
 		const tooltip = (vm.tooltip as { value: string }).value;
 
-		expect(tooltip).toContain(`*Updated ${new Date(fetchedAt).toLocaleString()}*`);
+		expect(tooltip).toContain(`*Updated ${formatTimestamp(fetchedAt)}*`);
 		expect(tooltip).not.toContain("cached");
 	});
 

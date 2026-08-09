@@ -12,6 +12,7 @@ import {
 	buildPricingActionLinks,
 	buildTooltipMd,
 	escapeMarkdown,
+	formatTimestamp,
 	truncate,
 } from "../formatting/formatting";
 import { renderStatusBarText } from "./statusBarTemplate";
@@ -71,7 +72,7 @@ function buildPricingVm(
 	pricing: ModelPricingInfo,
 	cache: CachedPricingData | undefined,
 ): StatusBarViewModel {
-	const cacheLabel = cache ? `*Updated ${new Date(cache.fetchedAt).toLocaleString()}*` : "";
+	const cacheLabel = cache ? `*Updated ${formatTimestamp(cache.fetchedAt)}*` : "";
 
 	// maxLen=0 means "no cap" — let VS Code's status bar handle overflow with its own ellipsis
 	const configuredMax = getStatusBarMaxWidth();

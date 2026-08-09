@@ -14,6 +14,7 @@
 import * as vscode from "vscode";
 import type { UsageStats } from "../../types-usage";
 import { formatCurrencyPrice } from "../formatting/currencyService";
+import { formatTimestamp } from "../formatting/formatting";
 import { getCurrency, getCurrencyRate } from "../../infrastructure/config";
 
 export interface UsageStatusBarViewModel {
@@ -201,7 +202,7 @@ function buildUsageTooltip(usage: UsageStats, currency: string): vscode.Markdown
 	];
 
 	// ── Footer ───────────────────────────────────────────────
-	const age = new Date(usage.fetchedAt).toLocaleString();
+	const age = formatTimestamp(usage.fetchedAt);
 	const footer = [
 		`*Updated ${age}*`,
 		"",

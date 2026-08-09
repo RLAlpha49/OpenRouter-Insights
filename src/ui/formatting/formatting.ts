@@ -9,6 +9,53 @@ import { computeBlendedRate } from "../../api/clients/pricingService";
 import { getBlendWeights } from "../../infrastructure/config";
 import { BLEND_NO_CACHE, effectiveBlendWeights } from "../../models/domain";
 
+const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	timeZone: "UTC",
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+});
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	timeZone: "UTC",
+	month: "short",
+	day: "numeric",
+});
+const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
+	timeZone: "UTC",
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+	hour: "numeric",
+	minute: "2-digit",
+});
+
+type DateInput = string | number | Date;
+
+function toValidDate(value: DateInput): Date | undefined {
+	const normalized =
+		typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value;
+	const date = new Date(normalized);
+	return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/** Format a calendar date with a stable UTC policy. */
+export function formatDateOnly(value: string | number | Date): string {
+	const date = toValidDate(value);
+	return date ? DATE_ONLY_FORMATTER.format(date) : "—";
+}
+
+/** Format an ISO chart date as a short month/day label in UTC. */
+export function formatShortDateLabel(value: string): string {
+	const date = toValidDate(value);
+	return date ? SHORT_DATE_FORMATTER.format(date) : "—";
+}
+
+/** Format a timestamp with a stable UTC time zone and locale. */
+export function formatTimestamp(value: string | number | Date): string {
+	const date = toValidDate(value);
+	return date ? TIMESTAMP_FORMATTER.format(date) : "—";
+}
+
 /**
  * Format a USD-per-million-tokens price for display.
  * Handles edge cases: NaN, 0 (free), very small, and typical values.

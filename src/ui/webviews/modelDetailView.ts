@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import type { ModelPricingInfo } from "../../types";
 import { escapeHtml } from "../escapeHtml";
 import { buildDetailDocument } from "../webviewAssets";
+import { formatDateOnly } from "../formatting/formatting";
 
 /**
  * Open a webview displaying detailed information about a single model.
@@ -26,7 +27,7 @@ export function showModelDetailWebview(model: ModelPricingInfo): void {
 /** Build a deprecation label from the model's deprecation date. */
 function depLabel(m: ModelPricingInfo): string {
 	if (!m.isDeprecated) return "";
-	return m.deprecationDate ? `Deprecates ${m.deprecationDate.slice(0, 10)}` : "Deprecated";
+	return m.deprecationDate ? `Deprecates ${formatDateOnly(m.deprecationDate)}` : "Deprecated";
 }
 
 /** Build a single pricing stat row for the detail view. Zero values show "—" instead of hiding. */
@@ -101,7 +102,7 @@ function metadataCard(m: ModelPricingInfo): string {
 	if (m.quantization) rows.push(statRow("Quantization", escapeHtml(m.quantization)));
 	rows.push(statRow("Modality", escapeHtml(m.modality || "—")));
 	if (m.created > 0) {
-		const date = new Date(m.created * 1000).toISOString().slice(0, 10);
+		const date = formatDateOnly(m.created * 1000);
 		rows.push(statRow("Created", date));
 	}
 	return `<div class="or-card"><h3>Metadata</h3>${rows.join("")}</div>`;

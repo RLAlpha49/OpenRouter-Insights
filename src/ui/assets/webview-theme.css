@@ -352,8 +352,28 @@ a:focus-visible {
 	}
 }
 @media (prefers-reduced-motion: reduce) {
-	.or-bar::after {
-		animation: none;
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+	.or-bar::after,
+	.or-btn,
+	.or-card,
+	.or-hero,
+	.or-key-card,
+	.or-chart-bar,
+	.or-credits-ring-fill,
+	.or-credits-bar-fill,
+	.or-spinner {
+		animation: none !important;
+		transition: none !important;
+	}
+	.or-spinner {
+		opacity: 0.8;
 	}
 }
 .or-bar-caption {
@@ -1008,14 +1028,6 @@ a:focus-visible {
 		font-size: 24px;
 	}
 }
-@media (prefers-reduced-motion: reduce) {
-	.or-credits-ring-fill {
-		transition: none;
-	}
-	.or-credits-bar-fill {
-		transition: none;
-	}
-}
 .or-connect-mark {
 	display: grid;
 	place-items: center;
@@ -1200,7 +1212,10 @@ a[data-cmd] {
 	border-radius: 6px;
 	text-decoration: none;
 	cursor: pointer;
-	transition: all 0.15s;
+	transition:
+		background-color 0.15s,
+		border-color 0.15s,
+		color 0.15s;
 }
 .or-btn:hover {
 	background: var(--or-amber-glow);
