@@ -99,13 +99,13 @@ API keys are stored through VS Code `SecretStorage`. `redaction.ts` removes bear
 
 `RefreshCoordinator` and `RefreshContext` provide generation IDs, abort signals, refresh reasons, deadlines, supersession, and late-result protection for workflows that opt into the coordinator. Concurrent use-case calls may also coalesce through an in-flight promise so a manual refresh and a scheduled refresh do not duplicate work.
 
-This is not a universal transport invariant. Pricing refresh and status-bar update paths use the coordinator and context-aware cancellation boundaries. Usage summary refresh uses its own service policy, and usage detail loading from `UsageRefreshUseCase.loadDetails()` remains outside the common refresh context. Maintainers must preserve these boundaries when changing refresh behavior rather than assuming every API request shares one cancellation scope.
+Scheduled usage polling enters the coordinator with reason `scheduled`, and `UsagePollingService` coalesces overlapping timer ticks before invoking the refresh callback. Disposal clears the timer and prevents queued work from starting. `UsageRefreshUseCase` receives the same context used by the coordinator and suppresses cache/UI publication after cancellation, so manual, scheduled, and configuration-triggered baseline refreshes share one stale-result boundary. Detail loading retains request-intent coalescing and aborts a superseded detail context.
 
 ## Storage and resilience decisions
 
 ### Zero-dependency SQLite reader
 
-The model reader implements the minimal SQLite format subset required to inspect Copilot's state database. It reads a stable snapshot, handles page headers, B-tree records, varints, overflow pages, and bounded WAL work, and validates model-shaped identifiers before publishing state.
+The model reader implements the minimal SQLite format subset required to inspect Copilot's state database. It reads a stable snapshot, handles page headers, B-tree records, varints, overflow pages, and bounded WAL work, and validates model-shaped identifiers before publishing state. A WAL merge that reaches its frame bound returns `wal-incomplete` without a value, so a potentially stale snapshot cannot be published as a successful model read. `StateDbReader` owns its result cache and diagnostic state, includes WAL metadata in its cache signature, and preserves typed conditions such as `busy`, `unreadable`, and `corrupt` through resolution.
 
 ### Pricing cache
 
