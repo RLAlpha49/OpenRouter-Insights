@@ -55,11 +55,8 @@ export async function resolveModelId(
 ): Promise<ResolvedModel | undefined> {
 	const detectors = createModelDetectors(pricingLookup, getIndexedValues, getLowercasedIndex);
 
-	let stateModel;
-	try {
-		const resolution = await resolveActiveModelFromCopilotState((msg) => log.debug(msg));
-		stateModel = resolution.model;
-	} catch {}
+	const resolution = await resolveActiveModelFromCopilotState((msg) => log.debug(msg));
+	const stateModel = resolution.model;
 
 	for (const detector of detectors) {
 		const result = await detector.detect(pricingLookup, stateModel ?? undefined);
