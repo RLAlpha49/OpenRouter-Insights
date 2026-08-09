@@ -125,6 +125,23 @@ describe("readItemTableValueWalAware", () => {
 		expect(result.value).toBe("v1");
 	});
 
+	it("does not publish a value from a capped WAL snapshot as successful", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const db = createStateDb(dbPath, [["k1", "v1"]]);
+		db.exec("PRAGMA journal_mode=WAL");
+		db.exec("PRAGMA wal_autocheckpoint=0");
+		const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
+		for (let index = 0; index < 4097; index++) {
+			update.run(`v${index}`, "k1");
+		}
+
+		const result = readItemTableValueWalAware(dbPath, "k1");
+		db.close();
+
+		expect(result.diagnostic).toBe("wal-incomplete");
+		expect(result.value).toBeUndefined();
+	});
+
 	it("returns wal-unreadable for a corrupt WAL file", () => {
 		const dbPath = path.join(tmpDir, "state.vscdb");
 		const db = createStateDb(dbPath, [["k1", "v1"]]);

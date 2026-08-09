@@ -742,9 +742,11 @@ export function readItemTableValueWalAware(
 		_snapshotIndex = { identity, values: index, walMerged: true, incomplete: walIncomplete };
 	}
 
+	if (walIncomplete) return { diagnostic: "wal-incomplete" };
+
 	const value = _snapshotIndex.values.get(key);
 	if (value === undefined) return { diagnostic: "no-match" };
-	return { value, diagnostic: _snapshotIndex.incomplete ? "wal-incomplete" : "ok" };
+	return { value, diagnostic: "ok" };
 }
 
 /**
