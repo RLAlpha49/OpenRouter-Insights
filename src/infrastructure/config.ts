@@ -145,6 +145,21 @@ export function getApiBaseUrl(): string {
 	return ConfigService.instance.apiBaseUrl;
 }
 
+/** Validate the public models URL against the provider trust boundary. */
+export function isAllowedPublicApiBaseUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		if (url.username || url.password || url.search || url.hash) return false;
+		if (url.protocol === "https:" && url.hostname === "openrouter.ai" && !url.port) return true;
+		return (
+			url.protocol === "http:" &&
+			(url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]")
+		);
+	} catch {
+		return false;
+	}
+}
+
 export function getStatusBarTemplate(): string {
 	return ConfigService.instance.statusBarTemplate;
 }
@@ -495,9 +510,9 @@ export class ConfigService implements vscode.Disposable, ReadonlyConfig {
 				_log.warn(`ConfigService: general.apiBaseUrl "${v}" is not a valid URL, using default`);
 				return _default;
 			}
-			if (url.protocol !== "https:" && url.protocol !== "http:") {
+			if (!isAllowedPublicApiBaseUrl(v)) {
 				_log.warn(
-					`ConfigService: general.apiBaseUrl has unsupported protocol "${url.protocol}", using default`,
+					`ConfigService: general.apiBaseUrl host or URL policy rejected "${url.origin}", using default`,
 				);
 				return _default;
 			}

@@ -126,6 +126,19 @@ describe("ConfigService validated access", () => {
 		expect(cfg.usageStatusBarClickAction).toBe("fullDashboard");
 		expect(cfg.blendWeights.prompt).toBeCloseTo(0.1);
 	});
+
+	it("rejects public pricing URLs outside the provider or localhost policy", () => {
+		(vscode.workspace as any)._configValues = {
+			"general.apiBaseUrl": "https://attacker.example/api/v1/models",
+		};
+		expect(ConfigService.instance.apiBaseUrl).toContain("openrouter.ai");
+
+		(vscode.workspace as any)._configValues = {
+			"general.apiBaseUrl": "https://user:pass@openrouter.ai/api/v1/models",
+		};
+		ConfigService.instance.dispose();
+		expect(ConfigService.instance.apiBaseUrl).toContain("openrouter.ai");
+	});
 });
 
 describe("SecretStorageService", () => {
