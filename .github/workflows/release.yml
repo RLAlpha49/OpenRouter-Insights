@@ -39,6 +39,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify lockfile reproducibility
+        run: git diff --exit-code -- package.json package-lock.json
+
       - name: Lint
         run: npm run lint
 
@@ -52,16 +55,14 @@ jobs:
         run: npm run format:check
 
       - name: Audit dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm run audit:deps
 
       # Packaging is owned by semantic-release. The prepareCmd runs
-      # `npm run package:verified` to create the atomic, checksummed VSIX.
-      # The resulting VSIX and checksum are attached to the GitHub Release
-      # for manual Marketplace upload.
+      # `npm run package:verified`, which creates the atomic, checksummed VSIX
+      # and enforces the bundle and VSIX size budgets against that exact
+      # artifact. The resulting VSIX and checksum are attached to the GitHub
+      # Release.
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release
-
-      - name: Check artifact size
-        run: npm run size

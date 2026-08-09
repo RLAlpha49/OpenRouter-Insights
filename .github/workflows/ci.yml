@@ -36,7 +36,7 @@ jobs:
       - run: npm run bundle
       - run: npm run size
       - name: Audit for known vulnerabilities
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm run audit:deps
 
   state-db-platform:
     name: State DB (${{ matrix.os }})

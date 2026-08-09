@@ -215,7 +215,7 @@ Detailed activity and analytics load through **Load Usage Details** and remain i
 2. Run `npm run bundle` or press **F5** to use the extension launch configuration.
 3. Test the extension in the Extension Development Host window.
 
-Run `npm run build` for a production build. Run `npm test` for tests. Run `npm run size` for the bundle and VSIX size report. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and release workflow.
+Run `npm run build` for a production build. Run `npm test` for tests. Run `npm run size` for the bundle size report, or `npm run package:verified` to build, checksum, and size-check the VSIX. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development and release workflow.
 
 ## License
 

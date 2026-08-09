@@ -4,8 +4,8 @@
 
 1. GitHub Actions starts on a push to `main` or `master`, or from `workflow_dispatch`.
 2. The workflow checks out the full repository history with `fetch-depth: 0`.
-3. Dependencies are installed with `npm ci`.
-4. The workflow checks `VSCE_PAT`, then runs linting, type checking, tests, coverage, formatting, VSIX packaging, size checks, and the dependency audit.
+3. Dependencies are installed with `npm ci`, and the workflow verifies that the install did not rewrite `package.json` or `package-lock.json`.
+4. The workflow runs linting, type checking, tests, formatting, and the dependency audit (`npm run audit:deps`, which covers the production graph at moderate and the full development graph at critical).
 5. The workflow runs `npm run release`, which invokes semantic-release.
 6. Semantic-release verifies the repository, release branch, credentials, and configured plugins.
 7. `@semantic-release/commit-analyzer` reads Conventional Commits and selects the next version:
@@ -16,7 +16,7 @@
 8. `@semantic-release/release-notes-generator` creates release notes grouped into the configured sections.
 9. `@semantic-release/npm` updates `package.json` to the next version. It uses `npmPublish: false`, so this extension is not published to npm.
 10. `@semantic-release/changelog` updates `CHANGELOG.md`.
-11. `@semantic-release/exec` runs `npm run package:verified`, which creates the versioned VSIX and its SHA-256 checksum.
+11. `@semantic-release/exec` runs `npm run package:verified`, which creates the versioned VSIX and its SHA-256 checksum, then enforces the bundle and VSIX size budgets against those exact files.
 12. `@semantic-release/git` commits the generated `package.json`, `package-lock.json`, and `CHANGELOG.md` changes.
 13. Semantic-release creates and pushes the version tag, such as `v1.1.0`.
 14. `@semantic-release/exec` runs `node scripts/publish-vsix.mjs`, which publishes the VSIX to the VS Code Marketplace using `VSCE_PAT`.

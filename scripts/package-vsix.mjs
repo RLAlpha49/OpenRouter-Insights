@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -32,4 +32,18 @@ if (!existsSync(tempPath)) {
 // Only replace the final artifact after packaging succeeded.
 rmSync(artifactPath, { force: true });
 renameSync(tempPath, artifactPath);
+
+// Drop artifacts left over from other versions. The release asset globs in
+// release.config.mjs and the size gate then have exactly one candidate: the
+// artifact this run just produced.
+const artifactPattern = /^openrouter-insights-.+\.vsix(\.sha256)?$/i;
+for (const entry of readdirSync(root)) {
+	if (!artifactPattern.test(entry) || entry === artifact || entry === `${artifact}.sha256`) {
+		continue;
+	}
+
+	rmSync(join(root, entry), { force: true });
+	console.log(`Removed stale VSIX artifact: ${entry}`);
+}
+
 console.log(`Created verified VSIX artifact: ${artifact}`);

@@ -528,6 +528,7 @@
 		"vscode:prepublish": "npm run build",
 		"prepare": "npm run prepare:webview-assets",
 		"prepare:webview-assets": "node scripts/generate-webview-assets.mjs",
+		"audit:deps": "node scripts/audit-dependencies.mjs",
 		"build": "npm run prepare:webview-assets && node esbuild.config.mjs --production",
 		"bundle": "npm run prepare:webview-assets && node esbuild.config.mjs",
 		"bundle:watch": "npm run prepare:webview-assets && node esbuild.config.mjs --watch",
@@ -537,10 +538,11 @@
 		"lint:fix": "eslint --fix src/",
 		"package": "npm run package:verified",
 		"package:debug": "vsce package",
-		"package:verified": "node scripts/package-vsix.mjs && node scripts/checksum-vsix.mjs && node scripts/size.mjs",
+		"package:verified": "node scripts/package-vsix.mjs && node scripts/checksum-vsix.mjs && node scripts/size.mjs --bundle --vsix",
 		"release": "npx semantic-release",
 		"release:dry": "npx semantic-release --dry-run --no-ci",
-		"size": "node scripts/size.mjs",
+		"size": "node scripts/size.mjs --bundle",
+		"size:package": "node scripts/size.mjs --bundle --vsix",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"test:coverage:view": "npx vitest --ui --coverage",
@@ -571,6 +573,10 @@
 		"typescript": "npm:@typescript/typescript6@^6.0.2",
 		"typescript-eslint": "^8.66.0",
 		"vitest": "^4.1.10"
+	},
+	"overrides": {
+		"js-yaml": "^4.3.1",
+		"nanoid": "^3.3.17"
 	},
 	"type": "commonjs",
 	"bugs": {

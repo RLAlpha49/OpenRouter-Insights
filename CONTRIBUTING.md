@@ -38,6 +38,8 @@ Use the `typescript` alias for local checks so local and CI results match.
 | Type-check without emitting  | `npm run typecheck`        |
 | Package VSIX                 | `npm run package:verified` |
 | Check bundle size            | `npm run size`             |
+| Check bundle and VSIX size   | `npm run size:package`     |
+| Audit dependencies           | `npm run audit:deps`       |
 
 ### Running the extension
 
@@ -203,14 +205,30 @@ Release assets, and VSIX checksum verification) is produced by the tagged
 credentialed `release` GitHub Environment. Always treat the workflow run as the source
 of truth for GitHub, npm, and VSIX publishing.
 
-The release workflow reports lint, typecheck, tests, coverage, formatting, production
-packaging, size, and dependency-audit results as separate steps. Packaging uses the locked
-`@vscode/vsce` dependency and produces `OpenRouter-Insights-<version>.vsix` plus its
-SHA-256 checksum, all owned by `semantic-release`. The workflow requires `VSCE_PAT`
-through the protected `release` environment before publishing. GitHub Actions are
-updated by Dependabot and reviewed before workflow changes are merged.
+The release workflow reports lint, typecheck, tests, formatting, and dependency-audit results
+as separate steps. Packaging, checksumming, and the size gate are owned by `semantic-release`,
+which runs `npm run package:verified` through its `prepareCmd`. That command uses the locked
+`@vscode/vsce` dependency, produces `openrouter-insights-<version>.vsix` plus its SHA-256
+checksum, and measures those exact files. The workflow requires `VSCE_PAT` through the
+protected `release` environment before publishing. GitHub Actions are updated by Dependabot and
+reviewed before workflow changes are merged.
 
-To package a VSIX locally, use `npm run package:verified` for the checksum-producing path or `npm run package` for the direct `vsce package` path declared in `package.json`.
+### Artifact and size gates
+
+Size checks always name the artifact they measure, so a check can neither pass on a stale
+workspace file nor silently skip a missing one:
+
+| Command                    | Measures                                                | Fails when                            |
+| -------------------------- | ------------------------------------------------------- | ------------------------------------- |
+| `npm run size`             | `out/` only                                              | `out/` is missing, empty, or over 5 MB |
+| `npm run size:package`     | `out/` and `openrouter-insights-<version>.vsix`          | Either artifact is missing or over budget |
+| `npm run package:verified` | Packages, checksums, then runs the bundle + VSIX gate    | Any packaging or size step fails       |
+
+CI runs `npm run size` after `npm run bundle`, so it measures the bundle that job just built.
+The VSIX budget is enforced on the packaging path, which is the only path that produces a VSIX.
+
+To package a VSIX locally, use `npm run package:verified` for the checksum-producing path or
+`npm run package:debug` for the direct `vsce package` path declared in `package.json`.
 
 ## Getting help
 
