@@ -634,3 +634,40 @@ describe("PricingCache: cacheInfo", () => {
 		expect(info.stale).toBe(true);
 	});
 });
+
+describe("PricingCache: bounded write admission (DB-004)", () => {
+	it("admits a normal-sized write and reports the result", async () => {
+		const ctx = createFakeContext();
+		const config = createFakeConfig();
+		const cache = new PricingCache(ctx, config);
+
+		const result = await cache.set(makeCacheData([makeModel()]));
+		expect(result.admitted).toBe(true);
+		expect(result.modelCount).toBe(1);
+		expect(result.rejectedReason).toBeUndefined();
+		expect(cache.get()?.models).toHaveLength(1);
+	});
+
+	it("rejects an irreducibly oversized write and preserves the prior cache", async () => {
+		const ctx = createFakeContext();
+		const config = createFakeConfig();
+		const cache = new PricingCache(ctx, config);
+
+		await cache.set(makeCacheData([makeModel({ id: "prior/model" })]));
+		expect(cache.get()?.models).toHaveLength(1);
+
+		const oversized = makeCacheData(
+			Array.from({ length: 6000 }, (_, i) =>
+				makeModel({ id: `big/model-${i}`, name: `Big Model ${i}` }),
+			),
+		);
+
+		const result = await cache.set(oversized);
+		expect(result.admitted).toBe(false);
+		expect(result.rejectedReason).toBe("oversized-after-trim");
+		expect(result.modelCount).toBe(0);
+		// The previous, usable catalog must remain intact.
+		expect(cache.get()?.models).toHaveLength(1);
+		expect(cache.get()?.models[0].id).toBe("prior/model");
+	});
+});

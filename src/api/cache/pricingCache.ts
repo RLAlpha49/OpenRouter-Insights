@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { CachedPricingData, ModelPricingInfo } from "../../types";
 import { validateCachedModelEntry } from "../../types";
-import type { IPricingCache } from "./pricingStore";
+import type { IPricingCache, PricingCacheWriteResult } from "./pricingStore";
 import { log, formatError } from "../../infrastructure/logger";
 import type { ReadonlyConfig } from "../../infrastructure/config";
 import type { RuntimeDiagnostics } from "../../infrastructure/runtimeDiagnostics";
@@ -263,32 +263,59 @@ export class PricingCache implements IPricingCache {
 	}
 
 	/**
-	 * Persist fresh pricing data with error recovery and size trimming.
-	 * Wraps the globalState write in try/catch to handle quota exceeded
-	 * and serialization errors gracefully.
+	 * Persist fresh pricing data with error recovery and a bounded,
+	 * deterministic admission policy.
 	 *
-	 * If the estimated serialized size exceeds CACHE_SIZE_MAX, deprecated
-	 * models are trimmed before persist to avoid quota violations.
-	 * A second pass trims pricing history when the payload is still too large.
+	 * Admission is explicit: if the serialized candidate exceeds
+	 * `CACHE_SIZE_MAX`, deprecated models are dropped first. When the
+	 * payload still exceeds the budget after trimming, the write is
+	 * *rejected* (reported via `PricingCacheWriteResult.rejectedReason`)
+	 * and the previously persisted cache is left intact, rather than
+	 * attempting an unbounded quota write that may fail silently. A
+	 * successful admission still uses the staged-key swap for atomicity.
 	 */
-	async set(data: CachedPricingData): Promise<void> {
+	async set(data: CachedPricingData): Promise<PricingCacheWriteResult> {
 		const startedAt = Date.now();
 		let modelsToWrite = data.models;
 
-		let serialized = JSON.stringify(data);
-		this._lastSerializedBytes = Buffer.byteLength(serialized, "utf8");
-		if (this._lastSerializedBytes > CACHE_SIZE_MAX) {
+		const measure = (candidate: CachedPricingData): number =>
+			Buffer.byteLength(JSON.stringify(candidate), "utf8");
+
+		let serializedBytes = measure(data);
+		this._lastSerializedBytes = serializedBytes;
+
+		if (serializedBytes > CACHE_SIZE_MAX) {
 			const nonDeprecated = modelsToWrite.filter((m) => !m.isDeprecated);
-			if (nonDeprecated.length > 0) {
+			if (nonDeprecated.length > 0 && nonDeprecated.length < modelsToWrite.length) {
 				log.warn(
-					`Cache too large (${modelsToWrite.length} models, ${(serialized.length / 1_000_000).toFixed(1)} MB). ` +
+					`Cache too large (${modelsToWrite.length} models, ${(serializedBytes / 1_000_000).toFixed(1)} MB). ` +
 						`Dropping ${modelsToWrite.length - nonDeprecated.length} deprecated models.`,
 				);
 				modelsToWrite = nonDeprecated;
 				data = { ...data, models: modelsToWrite };
-				serialized = JSON.stringify(data);
-				this._lastSerializedBytes = Buffer.byteLength(serialized, "utf8");
+				serializedBytes = measure(data);
+				this._lastSerializedBytes = serializedBytes;
 			}
+		}
+
+		// Final admission gate: a candidate that remains over budget after
+		// dropping deprecated models is irreducibly oversized. Reject it
+		// rather than writing an unbounded payload and leaving callers
+		// believing the oversized update was durably persisted.
+		if (serializedBytes > CACHE_SIZE_MAX) {
+			this._lastWriteMs = Date.now() - startedAt;
+			log.warn(
+				`Cache rejected: ${modelsToWrite.length} models, ` +
+					`${(serializedBytes / 1_000_000).toFixed(1)} MB exceeds ` +
+					`${(CACHE_SIZE_MAX / 1_000_000).toFixed(1)} MB budget after trimming. ` +
+					"Preserving previous cache.",
+			);
+			return {
+				admitted: false,
+				modelCount: 0,
+				serializedBytes,
+				rejectedReason: "oversized-after-trim",
+			};
 		}
 
 		try {
@@ -325,6 +352,11 @@ export class PricingCache implements IPricingCache {
 			this.rebuildLookup(data);
 			this._memCache = data;
 			this._memCacheValid = true;
+			return {
+				admitted: true,
+				modelCount: modelsToWrite.length,
+				serializedBytes: this._lastSerializedBytes,
+			};
 		} catch (err) {
 			this._lastWriteMs = Date.now() - startedAt;
 			log.error("Failed to persist cache:", formatError(err));
@@ -332,6 +364,11 @@ export class PricingCache implements IPricingCache {
 				"OpenRouter Insights: Pricing updated but couldn't be saved. " +
 					"Data may be lost after restart. Check disk space.",
 			);
+			return {
+				admitted: false,
+				modelCount: 0,
+				serializedBytes: this._lastSerializedBytes,
+			};
 		}
 	}
 

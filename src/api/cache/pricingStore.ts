@@ -17,13 +17,32 @@
 
 import type { CachedPricingData, ModelPricingInfo } from "../../types";
 
+/**
+ * Result of a `set` admission decision.
+ *
+ * A candidate that cannot be reduced within the supported budget is
+ * reported as `admitted: false` with a reason, and the previously persisted
+ * cache is left intact. Callers use `rejectedReason` to distinguish a
+ * deliberate, bounded rejection from a transport/quota failure.
+ */
+export interface PricingCacheWriteResult {
+	/** True when the candidate was serialized and persisted. */
+	admitted: boolean;
+	/** Number of models persisted (0 when rejected). */
+	modelCount: number;
+	/** Serialized size in bytes of the persisted or rejected payload. */
+	serializedBytes: number;
+	/** Set when the candidate was rejected because it could not be reduced within budget. */
+	rejectedReason?: "oversized-after-trim";
+}
+
 /** Persistence-only contract — get, set, staleness, age, clear, info. */
 export interface IPricingStore {
 	/** Retrieve cached data. Returns undefined when absent or corrupted. */
 	get(): CachedPricingData | undefined;
 
-	/** Persist pricing data. */
-	set(_data: CachedPricingData): Promise<void>;
+	/** Persist pricing data, applying the bounded admission policy. */
+	set(_data: CachedPricingData): Promise<PricingCacheWriteResult>;
 
 	/** True when data is missing or older than the configured max age. */
 	isStale(): boolean;

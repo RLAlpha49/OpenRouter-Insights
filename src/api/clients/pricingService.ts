@@ -21,7 +21,7 @@ import { BLEND, effectiveBlendWeights, type BlendWeights } from "../../models/do
 import { noopApiLogger, type ApiLogger } from "../logger";
 import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
 import { classifyError, fetchWithRetry } from "../transport/fetchHelpers";
-import { OpenRouterHttpError } from "../transport/openRouterError";
+import { OpenRouterHttpError, type OpenRouterErrorClass } from "../transport/openRouterError";
 import { redactUrl } from "../redaction";
 import { mergeContractHealth } from "../contractDecoders";
 import { buildEndpointUrl, getEndpointRetryPolicy } from "../endpoint/endpointCatalog";
@@ -302,12 +302,30 @@ export class PricingFetcher {
 				},
 			);
 
+			const parsed = parseModelsResponse(result.data, blendWeights);
+			if (parsed.models.length === 0) {
+				// An all-invalid (or empty) collection must not replace a usable
+				// cache with an empty result. Reject before marking the cycle
+				// successful so the circuit breaker stays intact and the caller's
+				// fallback path preserves the prior catalog.
+				this._logger.warn(
+					"fetchModelPricing: decoded 0 valid models; rejecting empty refresh to preserve prior cache",
+				);
+				throw new OpenRouterHttpError({
+					label: "models.list",
+					status: 502,
+					errorClass: "malformed-response",
+					envelope: {
+						message: "Pricing response contained no valid models; preserving previous cache",
+					},
+				});
+			}
 			this.resetCircuitBreaker();
 			this.lastSuccessEpoch = Date.now();
 			this._logger.info(
-				`fetchModelPricing: completed, ${result.data.length} models fetched across all pages`,
+				`fetchModelPricing: completed, ${parsed.models.length} models parsed across all pages`,
 			);
-			const data = parseModelsResponse(result.data, blendWeights);
+			const data = parsed;
 			data.contractHealth = result.contractHealth;
 			// Surface page-cap truncation as a visible data-health state.
 			data.pagination = pagination;
@@ -315,7 +333,24 @@ export class PricingFetcher {
 			return data;
 		} catch (err) {
 			if (err instanceof OpenRouterHttpError && err.aborted) throw err;
-			this.recordFailure();
+
+			// Only transport-instability classes (server, transport, rate-limit)
+			// advance the circuit breaker. Permanent failures (auth, permission,
+			// insufficient-credit, not-found, client, malformed-response) keep
+			// their diagnostics but do not open a pricing cooldown that would
+			// delay recovery from an unrelated problem.
+			const failureClass: OpenRouterErrorClass =
+				err instanceof OpenRouterHttpError
+					? err.errorClass
+					: (classifyError(err).errorClass ?? "malformed-response");
+			if (
+				failureClass === "server" ||
+				failureClass === "transport" ||
+				failureClass === "rate-limit"
+			) {
+				this.recordFailure();
+			}
+
 			if (err instanceof OpenRouterHttpError) {
 				if (err.errorClass === "server" || err.errorClass === "transport") {
 					throw new OpenRouterHttpError({

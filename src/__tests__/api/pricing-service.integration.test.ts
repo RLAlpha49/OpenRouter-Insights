@@ -422,3 +422,120 @@ describe("fetchModelPricing pagination", () => {
 		expect(result.models[0].id).toBe("model-1");
 	});
 });
+
+// ── Workstream F: state snapshot + catalog cache integrity ──
+
+describe("fetchModelPricing: empty/invalid collection (ERR-001)", () => {
+	let fetcher: PricingFetcher;
+
+	beforeEach(() => {
+		fetcher = new PricingFetcher();
+	});
+
+	it("rejects a response that decodes to zero valid models", async () => {
+		const body = { data: [{ id: "x" }, { id: "y" }] };
+		const client = fakeClient(jsonResponse(body));
+		const err = await fetcher
+			.fetchModelPricing(client, "https://test/api/v1/models")
+			.catch((error) => error);
+		expect(err).toBeInstanceOf(OpenRouterHttpError);
+		expect(err.errorClass).toBe("malformed-response");
+	});
+
+	it("rejects a non-object collection so a usable cache is preserved", async () => {
+		const body = { data: ["not a model", null, 42] };
+		const client = fakeClient(jsonResponse(body));
+		const err = await fetcher
+			.fetchModelPricing(client, "https://test/api/v1/models")
+			.catch((error) => error);
+		expect(err).toBeInstanceOf(OpenRouterHttpError);
+		expect(err.errorClass).toBe("malformed-response");
+	});
+});
+
+describe("fetchModelPricing: circuit breaker transient classes (ERR-003)", () => {
+	let fetcher: PricingFetcher;
+
+	beforeEach(() => {
+		fetcher = new PricingFetcher();
+	});
+
+	it("does not count a permanent (401) failure toward the circuit breaker", async () => {
+		const client = fakeClient(errorResponse(401, "Unauthorized"));
+		await expect(fetcher.fetchModelPricing(client, "https://test/api/v1/models")).rejects.toThrow();
+		const state = fetcher.getCircuitState();
+		expect(state.consecutiveFailures).toBe(0);
+		expect(state.status).toBe("closed");
+	});
+
+	it("counts a transient (500) failure toward the circuit breaker", async () => {
+		const client = fakeClient(errorResponse(500, "Server Error"));
+		await expect(fetcher.fetchModelPricing(client, "https://test/api/v1/models")).rejects.toThrow();
+		const state = fetcher.getCircuitState();
+		expect(state.consecutiveFailures).toBe(1);
+		expect(state.status).toBe("closed");
+	});
+
+	it("does not count a malformed-response failure toward the circuit breaker", async () => {
+		const body = { data: [{ id: "x" }] };
+		const client = fakeClient(jsonResponse(body));
+		await expect(fetcher.fetchModelPricing(client, "https://test/api/v1/models")).rejects.toThrow();
+		const state = fetcher.getCircuitState();
+		expect(state.consecutiveFailures).toBe(0);
+		expect(state.status).toBe("closed");
+	});
+});
+
+describe("fetchModelPricing: per-page ETag cache (API-004)", () => {
+	let fetcher: PricingFetcher;
+
+	beforeEach(() => {
+		fetcher = new PricingFetcher();
+	});
+
+	const page = (ids: string[], next?: string) => ({
+		data: ids.map((id) => ({
+			id,
+			name: id,
+			created: Math.floor(Date.now() / 1000) - 86400,
+			description: "",
+			context_length: 4096,
+			pricing: {
+				prompt: "0",
+				completion: "0",
+				image: "0",
+				request: "0",
+				input_cache_read: "0",
+				input_cache_write: "0",
+				web_search: "0",
+				internal_reasoning: "0",
+			},
+		})),
+		links: next ? { next } : undefined,
+	});
+
+	it("keeps per-page ETag caches distinct across pages", async () => {
+		const client: HttpClient = {
+			fetch: async (url, init) => {
+				const headers = init?.headers ? new Headers(init.headers) : undefined;
+				if (headers?.get("If-None-Match")) {
+					return new Response(null, { status: 304, headers: { ETag: "*" } });
+				}
+				if (String(url).includes("offset=2")) {
+					return jsonResponse(page(["model-b"]), 200, { ETag: '"p2"' });
+				}
+				return jsonResponse(page(["model-a"], "https://test/api/v1/models?offset=2"), 200, {
+					ETag: '"p1"',
+				});
+			},
+		};
+
+		const first = await fetcher.fetchModelPricing(client, "https://test/api/v1/models");
+		expect(first.models.map((m) => m.id).sort()).toEqual(["model-a", "model-b"]);
+
+		const second = await fetcher.fetchModelPricing(client, "https://test/api/v1/models");
+		// Each page's 304 returns its own cached data, not the other page's.
+		expect(second.models.map((m) => m.id).sort()).toEqual(["model-a", "model-b"]);
+		expect(second.models).toHaveLength(2);
+	});
+});
