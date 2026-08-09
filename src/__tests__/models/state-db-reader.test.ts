@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveActiveModelFromCopilotState } from "../../models/stateDbReader";
+import { getLastStateDbDiagnostic } from "../../models/stateDbReader";
 
 vi.mock("node:fs", async () => {
 	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -74,5 +75,43 @@ describe("state database reader", () => {
 		});
 
 		expect((await resolveActiveModelFromCopilotState()).diagnostic).toBe("corrupt");
+	});
+
+	it("updates the last diagnostic when stat fails", async () => {
+		const dbPath = path.join(process.cwd(), "unreadable-state.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockImplementation(() => {
+			throw new Error("database unavailable");
+		});
+
+		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "unreadable" });
+		expect(getLastStateDbDiagnostic()).toBe("unreadable");
+	});
+
+	it("resets the previous failure when the database is no longer found", async () => {
+		const dbPath = path.join(process.cwd(), "missing-after-failure.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockImplementation(() => {
+			throw new Error("database unavailable");
+		});
+		await resolveActiveModelFromCopilotState();
+
+		vi.mocked(findStateDb).mockReturnValue(undefined);
+
+		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "not-found" });
+		expect(getLastStateDbDiagnostic()).toBe("not-found");
+	});
+
+	it("does not publish a model from an incomplete WAL read", async () => {
+		const dbPath = path.join(process.cwd(), "incomplete-state.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 10, size: 4 } as fs.Stats);
+		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
+		vi.mocked(readItemTableValueWalAware).mockReturnValue({
+			value: '{"model":"openai/gpt-4o"}',
+			diagnostic: "wal-incomplete",
+		});
+
+		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "wal-incomplete" });
 	});
 });
