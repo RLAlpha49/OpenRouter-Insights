@@ -481,3 +481,40 @@ describe("fetchUsageStats", () => {
 		});
 	});
 });
+
+describe("fetchUsageStats authenticated-response safety", () => {
+	it("rejects an oversized authenticated response before decoding", async () => {
+		const client: HttpClient = {
+			fetch: async () =>
+				new Response("{}", {
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "application/json",
+						"Content-Length": "999999999",
+					}),
+				}),
+		};
+
+		const err = (await fetchUsageStats("sk-test", undefined, client).catch((e) => e)) as {
+			_errorClass?: string;
+		};
+
+		expect(err._errorClass).toBe("malformed-response");
+	});
+
+	it("rejects a non-JSON (HTML) authenticated response as malformed", async () => {
+		const client: HttpClient = {
+			fetch: async () =>
+				new Response("<html><body>login required</body></html>", {
+					status: 200,
+					headers: new Headers({ "Content-Type": "text/html" }),
+				}),
+		};
+
+		const err = (await fetchUsageStats("sk-test", undefined, client).catch((e) => e)) as {
+			_errorClass?: string;
+		};
+
+		expect(err._errorClass).toBe("malformed-response");
+	});
+});

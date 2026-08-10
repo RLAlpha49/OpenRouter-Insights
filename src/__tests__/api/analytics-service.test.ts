@@ -212,4 +212,31 @@ describe("fetchModelSpendBreakdown", () => {
 		await fetchModelSpendBreakdown("sk-rotate", 30, client);
 		expect(calls).toBe(2);
 	});
+
+	it("does not reuse an in-flight request after a credential change", async () => {
+		let calls = 0;
+		const resolvers: Array<() => void> = [];
+		const client: HttpClient = {
+			fetch: async () => {
+				calls++;
+				await new Promise<void>((resolve) => {
+					resolvers.push(resolve);
+				});
+				return jsonResponse({ data: [] });
+			},
+		};
+
+		const first = fetchModelSpendBreakdown("sk-rotate", 30, client);
+
+		// Rotate the credential while the first request is still in flight. The
+		// in-flight map is keyed by credential generation, so the second call
+		// must not reuse the previous request and must hit the network again.
+		setCredentialGeneration(1);
+
+		const second = fetchModelSpendBreakdown("sk-rotate", 30, client);
+		await vi.waitFor(() => expect(calls).toBe(2));
+
+		resolvers.forEach((resolve) => resolve());
+		await Promise.all([first, second]);
+	});
 });

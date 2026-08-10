@@ -268,6 +268,41 @@ describe("exportPricing", () => {
 		expect((vscode.window as any).showWarningMessage).toHaveBeenCalledTimes(2);
 	});
 
+	it("rejects an export to an unsupported file extension without writing", async () => {
+		const fs = await import("node:fs");
+		const writeFile = vi.spyOn(fs.promises, "writeFile").mockResolvedValue(undefined);
+		(vscode.window as any).showSaveDialog = vi.fn(async () => ({ fsPath: "C:/tmp/pricing.txt" }));
+		(vscode.window as any).showWarningMessage = vi.fn(async () => undefined);
+
+		await exportPricing([model()], "csv");
+
+		expect(writeFile).not.toHaveBeenCalled();
+		expect((vscode.window as any).showWarningMessage).toHaveBeenCalled();
+		writeFile.mockRestore();
+	});
+
+	it("reports a failed write through the UI without surfacing a secret", async () => {
+		const fs = await import("node:fs");
+		const secret = "sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789";
+		const writeFile = vi
+			.spyOn(fs.promises, "writeFile")
+			.mockRejectedValue(
+				new Error(`ENOENT: no such file or directory, open 'C:/Users/alex/${secret}.csv'`),
+			);
+		(vscode.window as any).showSaveDialog = vi.fn(async () => ({
+			fsPath: "C:/Users/alex/out.csv",
+		}));
+		const errorMessage = vi.fn();
+		(vscode.window as any).showErrorMessage = errorMessage;
+
+		await exportPricing([model()], "csv");
+
+		expect(writeFile).toHaveBeenCalled();
+		expect(errorMessage).toHaveBeenCalled();
+		expect(String(errorMessage.mock.calls[0][0])).not.toContain(secret);
+		writeFile.mockRestore();
+	});
+
 	it("routes export commands to the selected format", async () => {
 		const cache = store({ models: [model()] });
 		const exportModule = await import("../../ui/exportService");

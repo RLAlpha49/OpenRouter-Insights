@@ -364,3 +364,40 @@ describe("withLogging", () => {
 		expect(String(log.warn.mock.calls[0][0])).toContain("string failure");
 	});
 });
+
+describe("credential redaction in diagnostics", () => {
+	function logger() {
+		return { info: vi.fn(), warn: vi.fn() };
+	}
+
+	it("redacts a secret-bearing query parameter from the logged URL", async () => {
+		const log = logger();
+		const pipeline = new HttpPipeline(fakeClient(new Response("{}", { status: 200 })), [
+			withLogging(log),
+		]);
+
+		const secret = "sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789";
+		await pipeline.fetch(`https://openrouter.ai/api/v1/key?api_key=${secret}`);
+
+		const message = String(log.info.mock.calls[0][0]);
+		expect(message).not.toContain(secret);
+		expect(message).toContain("REDACTED");
+	});
+
+	it("redacts credentials from request diagnostics recorded by the pipeline", async () => {
+		const recorded: string[] = [];
+		const client: HttpClient = {
+			fetch: async () => new Response("{}", { status: 200 }),
+		};
+		const pipeline = new HttpPipeline(client, [], {
+			recordRequest: (url) => recorded.push(url),
+		});
+
+		const secret = "sk-or-v1-SECRETS";
+		await pipeline.fetch(`https://openrouter.ai/api/v1/key?api_key=${secret}`, {
+			headers: { Authorization: "Bearer sk-or-v1-OTHERSECRET" },
+		});
+
+		expect(recorded[0]).not.toContain(secret);
+	});
+});

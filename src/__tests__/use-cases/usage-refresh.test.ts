@@ -527,7 +527,10 @@ describe("UsageRefreshUseCase", () => {
 		);
 
 		// The first (superseded) request must not publish.
-		resolveSecond?.({ ...baseline, dailyUsageHistory: [{ date: "2026-08-02", usage: 2, requests: 2 }] });
+		resolveSecond?.({
+			...baseline,
+			dailyUsageHistory: [{ date: "2026-08-02", usage: 2, requests: 2 }],
+		});
 		await Promise.all([first, second]);
 
 		expect(cache.get()?.dailyUsageHistory?.[0]).toMatchObject({ date: "2026-08-02" });
