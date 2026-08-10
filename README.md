@@ -209,6 +209,11 @@ The privacy summary above covers key storage, network requests, redaction, and t
 
 Detailed activity and analytics load through **Load Usage Details** and remain in memory for the current extension session.
 
+### Data retention and deletion
+
+- **API key** — The extension stores the OpenRouter API key in VS Code `SecretStorage`. To remove it, run **Remove Extension API Key** (or **Delete API Key** for a managed key). SecretStorage is managed by VS Code, so the key is removed through the host's secure store rather than a plain-text file.
+- **In-memory usage data** — Pricing, account balance, credits, per-key usage, activity history, and analytics stay in memory for the current extension session only. They are cleared when the extension host unloads. When you replace or remove the key, the extension invalidates derived authenticated caches (analytics, model metrics, and in-flight requests) so data acquired under a previous credential is not served afterwards.
+
 ## Develop locally
 
 1. Run `npm install`.
