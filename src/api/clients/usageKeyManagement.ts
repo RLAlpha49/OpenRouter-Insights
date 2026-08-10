@@ -17,7 +17,13 @@ import type {
 import type { HttpClient } from "../transport/httpClient";
 import { defaultHttpClient } from "../transport/httpClient";
 import { buildEndpointUrl } from "../endpoint/endpointCatalog";
-import { fetchJson, DEFAULT_BASE_URL, validateKeyHash, validateKeyRequest, redactUrl } from "./usageTransport";
+import {
+	fetchJson,
+	DEFAULT_BASE_URL,
+	validateKeyHash,
+	validateKeyRequest,
+	redactUrl,
+} from "./usageTransport";
 
 /**
  * Create a new API key. Requires a management key.

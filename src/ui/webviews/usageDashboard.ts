@@ -21,7 +21,6 @@ import type { IPricingIndex } from "../../api/cache/pricingStore";
 import { formatCurrencyPrice, currencySymbol, resolveRate } from "../formatting/currencyService";
 import { ConfigService, getCurrency, getCurrencyRate } from "../../infrastructure/config";
 import { attr, text, PALETTE, buildDashboardDocument } from "../webviewAssets";
-import { log } from "../../infrastructure/logger";
 import { deriveName } from "../../models/modelNameDeriver";
 import { formatShortDateLabel, formatTimestamp } from "../formatting/formatting";
 

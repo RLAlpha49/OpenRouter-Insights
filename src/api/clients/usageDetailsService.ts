@@ -278,9 +278,7 @@ async function fetchAnalyticsEnrichment(
 	} catch (err) {
 		if (signal?.aborted) throw err;
 		const statusCode =
-			err instanceof OpenRouterHttpError
-				? err.status
-				: (err as { statusCode?: number }).statusCode;
+			err instanceof OpenRouterHttpError ? err.status : (err as { statusCode?: number }).statusCode;
 		const unavailableReason: "managementKeyRequired" | "unavailable" =
 			statusCode === 401 || statusCode === 403 ? "managementKeyRequired" : "unavailable";
 		logger.warn(
