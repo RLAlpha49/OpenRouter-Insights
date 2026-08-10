@@ -25,6 +25,52 @@
 			"problemMatcher": ["$tsc"],
 			"label": "npm: typecheck",
 			"detail": "tsc --noEmit"
+		},
+		{
+			"type": "npm",
+			"script": "lint",
+			"problemMatcher": ["$eslint"],
+			"label": "npm: lint",
+			"detail": "eslint src/"
+		},
+		{
+			"type": "npm",
+			"script": "test",
+			"label": "npm: test",
+			"detail": "vitest run"
+		},
+		{
+			"type": "npm",
+			"script": "test:coverage",
+			"label": "npm: test:coverage",
+			"detail": "vitest run --coverage"
+		},
+		{
+			"type": "npm",
+			"script": "format:check",
+			"problemMatcher": [],
+			"label": "npm: format:check",
+			"detail": "prettier --check src/**/*.ts"
+		},
+		{
+			"type": "npm",
+			"script": "size",
+			"problemMatcher": [],
+			"label": "npm: size",
+			"detail": "node scripts/size.mjs --bundle"
+		},
+		{
+			"type": "npm",
+			"script": "docs:check",
+			"problemMatcher": [],
+			"label": "npm: docs:check",
+			"detail": "node scripts/check-manifest-docs.mjs"
+		},
+		{
+			"label": "verify",
+			"detail": "Run the read-only quality gate: lint, typecheck, test, format:check",
+			"dependsOn": ["npm: lint", "npm: typecheck", "npm: test", "npm: format:check"],
+			"problemMatcher": []
 		}
 	]
 }

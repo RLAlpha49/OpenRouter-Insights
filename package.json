@@ -547,6 +547,8 @@
 		"test:coverage": "vitest run --coverage",
 		"test:coverage:view": "npx vitest --ui --coverage",
 		"test:watch": "vitest",
+		"docs:check": "node scripts/check-manifest-docs.mjs",
+		"verify": "npm run lint && npm run typecheck && npm run test && npm run format:check",
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {

@@ -40,6 +40,8 @@ Use the `typescript` alias for local checks so local and CI results match.
 | Check bundle size            | `npm run size`             |
 | Check bundle and VSIX size   | `npm run size:package`     |
 | Audit dependencies           | `npm run audit:deps`       |
+| Check manifest/README drift  | `npm run docs:check`       |
+| Run read-only quality gate   | `npm run verify`           |
 
 ### Running the extension
 
@@ -50,10 +52,22 @@ Use the `typescript` alias for local checks so local and CI results match.
 
 The following tasks are available in `.vscode/tasks.json`:
 
-| Task Label       | Command             | Description                            |
-| ---------------- | ------------------- | -------------------------------------- |
-| `npm: build`     | `npm run build`     | Production build with minification     |
-| `npm: typecheck` | `npm run typecheck` | TypeScript type-check without emitting |
+| Task Label          | Command                | Description                                                       |
+| ------------------- | ---------------------- | ----------------------------------------------------------------- |
+| `npm: build`        | `npm run build`        | Production build with minification                               |
+| `npm: bundle`       | `npm run bundle`       | Development build with sourcemaps                                 |
+| `npm: typecheck`    | `npm run typecheck`    | TypeScript type-check without emitting                            |
+| `npm: lint`         | `npm run lint`         | ESLint over `src/`                                                |
+| `npm: test`         | `npm run test`         | Run the Vitest suite                                              |
+| `npm: test:coverage`| `npm run test:coverage`| Run the suite with V8 coverage                                    |
+| `npm: format:check` | `npm run format:check` | Verify Prettier formatting                                        |
+| `npm: size`         | `npm run size`         | Report the bundle size against budget                             |
+| `npm: docs:check`   | `npm run docs:check`   | Verify every command/setting is documented in README.md          |
+| `verify`            | `npm run verify`       | Read-only quality gate: lint, typecheck, test, format:check       |
+
+Run **Tasks: Run Task** (Ctrl/Cmd+Shift+P) and pick `verify` to run the full
+documented read-only quality gate without producing artifacts. Packaging
+(`npm run package:verified`) is kept separate because it creates the VSIX.
 
 ### Launch Configurations
 
