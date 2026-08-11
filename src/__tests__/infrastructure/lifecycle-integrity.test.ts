@@ -159,9 +159,9 @@ describe("lifecycle integrity", () => {
 		expect(services.commands.has("openrouter-insights.setKeyLimit")).toBe(true);
 		expect(services.commands.has("openrouter-insights.deleteApiKey")).toBe(true);
 
-		const disposeSpy = vi.spyOn(services, "dispose");
+		const eventBusDispose = vi.spyOn(services.eventBus, "dispose");
 		services.dispose();
 		services.dispose();
-		expect(disposeSpy).toHaveBeenCalledTimes(2);
+		expect(eventBusDispose).toHaveBeenCalledTimes(1);
 	});
 });

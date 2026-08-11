@@ -7,8 +7,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { StatusBarUpdateUseCase } from "../../use-cases/statusBarUpdateUseCase";
 import type { IPricingCache } from "../../api/cache/pricingStore";
 import type { ModelPricingInfo } from "../../types";
-import { StatusBarView } from "../../ui/status/statusBarView";
-import { ModelPickerEnhancer } from "../../ui/model-browser/modelPickerEnhancer";
+import type {
+	StatusBarPresenter,
+	StatusBarPricingState,
+	ModelSelectionCache,
+} from "../../use-cases/ports";
 import { EventBus } from "../../infrastructure/eventBus";
 import { createFakeReadonlyConfig } from "../__mocks__/config-test-helpers";
 
@@ -79,13 +82,23 @@ function createFakeCache(models?: ModelPricingInfo[]): IPricingCache {
 }
 
 describe("StatusBarUpdateUseCase", () => {
-	let statusBar: StatusBarView;
-	let modelPicker: ModelPickerEnhancer;
+	let statusBar: StatusBarPresenter;
+	let modelPicker: ModelSelectionCache;
 	let eventBus: EventBus;
+	let shown: { displayName: string | undefined; data: StatusBarPricingState["data"] }[];
 
 	beforeEach(() => {
-		statusBar = new StatusBarView();
-		modelPicker = new ModelPickerEnhancer();
+		shown = [];
+		statusBar = {
+			setEnabled: vi.fn(),
+			setCommand: vi.fn(),
+			showPricing: ({ displayName, data }: StatusBarPricingState) => {
+				shown.push({ displayName, data });
+			},
+		} as unknown as StatusBarPresenter;
+		modelPicker = {
+			invalidateConfiguredIdsCache: vi.fn(),
+		} as unknown as ModelSelectionCache;
 		eventBus = new EventBus();
 	});
 
@@ -95,6 +108,7 @@ describe("StatusBarUpdateUseCase", () => {
 		const useCase = new StatusBarUpdateUseCase(cache, statusBar, modelPicker, config, eventBus);
 
 		await expect(useCase.execute()).resolves.toBeUndefined();
+		expect(shown).toHaveLength(0);
 	});
 
 	it("coalesces concurrent calls", async () => {
@@ -105,6 +119,7 @@ describe("StatusBarUpdateUseCase", () => {
 		const p1 = useCase.execute();
 		const p2 = useCase.execute();
 		await expect(Promise.all([p1, p2])).resolves.toBeDefined();
+		expect(shown).toHaveLength(1);
 	});
 
 	it("skips re-render when model and pricing status unchanged", async () => {
@@ -115,8 +130,10 @@ describe("StatusBarUpdateUseCase", () => {
 
 		// First call should render
 		await expect(useCase.execute()).resolves.toBeUndefined();
+		expect(shown).toHaveLength(1);
 		// Second call with same state should skip (change detection)
 		await expect(useCase.execute()).resolves.toBeUndefined();
+		expect(shown).toHaveLength(1);
 	});
 
 	it("can invalidate change-detection cache", async () => {
@@ -126,8 +143,10 @@ describe("StatusBarUpdateUseCase", () => {
 		const useCase = new StatusBarUpdateUseCase(cache, statusBar, modelPicker, config, eventBus);
 
 		await useCase.execute();
+		expect(shown).toHaveLength(1);
 		useCase.invalidateCache();
 		// After invalidation, next execute should re-render
 		await expect(useCase.execute()).resolves.toBeUndefined();
+		expect(shown).toHaveLength(2);
 	});
 });

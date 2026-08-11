@@ -1,12 +1,12 @@
 /**
  * RefreshUseCase — encapsulates the pricing refresh workflow
- * (fetch + persist + notify + trigger UI update).
+ * (fetch + persist + publish outcome + trigger UI update).
  *
  * Extracted from extension.ts so it can be unit-tested with a fake
- * pricing service, cache, and UI presenter.
+ * pricing service, cache, and presenter. Terminal outcomes are published
+ * through `PricingRefreshPresenter`; this module never talks to the host.
  */
 
-import * as vscode from "vscode";
 import type { IPricingStore } from "../api/cache/pricingStore";
 import { PricingFetcher } from "../api/clients/pricingService";
 import { log, formatError, formatErrorBrief } from "../infrastructure/logger";
@@ -15,6 +15,7 @@ import type { RefreshContext } from "../infrastructure/refreshContext";
 import type { HttpClient } from "../api/transport/httpClient";
 import type { EventBus } from "../infrastructure/eventBus";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
+import type { PricingRefreshPresenter } from "./ports";
 
 export class RefreshUseCase {
 	constructor(
@@ -24,6 +25,7 @@ export class RefreshUseCase {
 		private readonly _client?: HttpClient,
 		private readonly _eventBus?: EventBus,
 		private readonly _diagnostics?: RuntimeDiagnostics,
+		private readonly _presenter?: PricingRefreshPresenter,
 	) {}
 
 	private _pending: Promise<void> | undefined;
@@ -70,9 +72,7 @@ export class RefreshUseCase {
 			}
 			await this._cache.set(data);
 			log.info("Pricing refreshed:", data.models.length, "models, cache now", this._cache.age());
-			void vscode.window.showInformationMessage(
-				`OpenRouter pricing updated (${data.models.length} models)`,
-			);
+			this._presenter?.pricingUpdated(data.models.length);
 		} catch (err) {
 			// Cancellation is non-error control flow — do not surface it.
 			if (ctx?.isCancelled() || (err as { cancelled?: boolean }).cancelled) {
@@ -92,13 +92,9 @@ export class RefreshUseCase {
 			if (cachedData && cachedData.models.length > 0) {
 				const cacheAge = this._cache.age();
 				log.warn("RefreshUseCase: API unreachable — falling back to cached data from", cacheAge);
-				void vscode.window.showWarningMessage(
-					`OpenRouter: couldn't fetch pricing — showing cached data from ${cacheAge}. ${formatErrorBrief(err)}`,
-				);
+				this._presenter?.pricingStale(cacheAge, formatErrorBrief(err));
 			} else {
-				void vscode.window.showErrorMessage(
-					`OpenRouter: failed to fetch pricing — ${formatErrorBrief(err)}`,
-				);
+				this._presenter?.pricingUnavailable(formatErrorBrief(err));
 			}
 		}
 

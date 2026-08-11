@@ -432,9 +432,9 @@ describe("ExtensionRuntime feature reconciliation", () => {
 			"features.usage.enabled": false,
 			"usage.showStatusBar": true,
 		});
-		(runtime as any).reconcileUsage();
+		(runtime as any).reconcileFeature("usage");
 		expect(webviewRegistrations[0].dispose).toHaveBeenCalled();
-		expect((runtime as any)._featureResources.has("usage")).toBe(false);
+		expect((runtime as any)._features.isActive("usage")).toBe(false);
 
 		updateConfig({
 			"features.statusBar.enabled": false,
@@ -442,7 +442,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 			"features.usage.enabled": true,
 			"usage.showStatusBar": false,
 		});
-		(runtime as any).reconcileUsage();
+		(runtime as any).reconcileFeature("usage");
 		expect(webviewRegistrations).toHaveLength(2);
 		expect(services.usageStatusBar.setEnabled).toHaveBeenCalledWith(false);
 		runtime.dispose();
@@ -497,7 +497,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 			"usage.showDashboard": true,
 			"usage.showStatusBar": true,
 		});
-		(runtime as any).reconcileUsage();
+		(runtime as any).reconcileFeature("usage");
 		expect(webviewRegistrations).toHaveLength(1);
 
 		updateConfig({
@@ -507,9 +507,9 @@ describe("ExtensionRuntime feature reconciliation", () => {
 			"usage.showDashboard": false,
 			"usage.showStatusBar": true,
 		});
-		(runtime as any).reconcileUsage();
+		(runtime as any).reconcileFeature("usage");
 		expect(webviewRegistrations[0].dispose).toHaveBeenCalled();
-		expect((runtime as any)._featureResources.has("usage")).toBe(true);
+		expect((runtime as any)._features.isActive("usage")).toBe(true);
 		runtime.dispose();
 	});
 

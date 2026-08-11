@@ -9,20 +9,28 @@ import { UsagePollingService } from "./usagePollingService";
 import { formatErrorBrief, log } from "./logger";
 import { registerCommands } from "./commandRegistrar";
 import { observeRefresh } from "./refreshObservation";
-import type { RuntimeServices, ServiceContainer } from "./services";
+import { FeatureReconciler, ToggledResource, type FeatureLifecycle } from "./featureReconciler";
+import type { CommandServices, RuntimeServices } from "./composition/contracts";
 import { registerModelHoverProvider } from "../ui/webviews/modelHoverProvider";
 import { computeBlendedRate } from "../api/clients/pricingService";
 import { RuntimeDiagnostics } from "./runtimeDiagnostics";
 
-/** Owns every activation-scoped resource and converges feature state safely. */
+/**
+ * Owns every activation-scoped registration and converges feature state
+ * through one reconciliation entry point.
+ *
+ * The runtime does not own the service graph: `ExtensionActivation` disposes
+ * the container, the refresh coordinator, and configuration after the runtime
+ * has released its own timers, watchers, and registrations.
+ */
 export class ExtensionRuntime implements vscode.Disposable {
 	private readonly _disposables: vscode.Disposable[] = [];
-	private readonly _featureResources = new Map<FeatureId, vscode.Disposable>();
+	private readonly _features: FeatureReconciler;
 	private disposed = false;
 	private readonly refreshScheduler: RefreshScheduler;
 	private readonly modelPolling: ModelPollingService;
 	private usagePolling: UsagePollingService | undefined;
-	private usageDashboardRegistration: vscode.Disposable | undefined;
+	private usageDashboardRegistration: ToggledResource | undefined;
 	readonly diagnostics: RuntimeDiagnostics;
 	private readonly config: ConfigService;
 	private started = false;
@@ -45,8 +53,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 
 	constructor(
 		private readonly _context: vscode.ExtensionContext,
-		private readonly _services: RuntimeServices &
-			Pick<ServiceContainer, "features" | "commands" | "dispose" | "showLoading" | "clearLoading">,
+		private readonly _services: RuntimeServices & CommandServices,
 	) {
 		this.config = ConfigService.instance;
 		this.diagnostics = _services.diagnostics ?? new RuntimeDiagnostics();
@@ -70,11 +77,18 @@ export class ExtensionRuntime implements vscode.Disposable {
 					reason: "window not focused",
 				}),
 		);
-		this.reconcileFeature("statusBar");
-		this.reconcileFeature("hoverProvider");
-		this.reconcileFeature("usage");
+		this._features = new FeatureReconciler(this.createFeatureLifecycles(), (feature, error) => {
+			this.diagnostics.recordFailure("config", error);
+			log.errorFields(
+				{ boundary: "configuration", feature },
+				`Feature reconciliation failed for ${feature}:`,
+				error,
+			);
+		});
+		this._features.reconcileAll();
 		this._services.modelPicker.warmConfiguredModelDiscovery();
 		this._disposables.push(
+			this._features,
 			this.refreshScheduler,
 			this.modelPolling,
 			createStateDbWatcher(() => this.modelPolling.coalescedCheck()),
@@ -88,7 +102,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 					},
 					onPollIntervalChanged: () => this.modelPolling.schedule(),
 					onUsageDataSettingsChanged: () => {
-						if (!this.disposed && ConfigService.instance.isFeatureEnabled("usage")) {
+						if (!this.disposed && this.config.isFeatureEnabled("usage")) {
 							this.runInBackground("usage settings refresh", async () => {
 								await this._services.doUsageRefresh();
 								await this._services.usageRefreshUseCase.loadDetails();
@@ -103,10 +117,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 								...cached,
 								models: cached.models.map((model) => ({
 									...model,
-									blendedRate: computeBlendedRate(
-										model.perMillion,
-										ConfigService.instance.blendWeights,
-									),
+									blendedRate: computeBlendedRate(model.perMillion, this.config.blendWeights),
 								})),
 							};
 							await this._services.cache.set(updated);
@@ -119,8 +130,8 @@ export class ExtensionRuntime implements vscode.Disposable {
 				},
 				this._services.eventBus,
 			),
-			this.config.onFeatureChanged((feature) => this.reconcileFeature(feature)),
-			this.config.onAnyConfigChanged(() => this.reconcileUsage()),
+			this.config.onFeatureChanged((feature: FeatureId) => this._features.reconcile(feature)),
+			this.config.onAnyConfigChanged(() => this._features.reconcileAll()),
 			registerCommands(this._context, this._services),
 		);
 		this.refreshScheduler.schedule();
@@ -138,7 +149,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 		}
 		if (
 			this.config.isFeatureEnabled("usage") &&
-			(ConfigService.instance.usageStatusBarEnabled || ConfigService.instance.usageShowDashboard)
+			(this.config.usageStatusBarEnabled || this.config.usageShowDashboard)
 		) {
 			await this.runInBackground("usage refresh", () => this._services.doUsageRefresh());
 		}
@@ -150,107 +161,81 @@ export class ExtensionRuntime implements vscode.Disposable {
 		}
 	}
 
-	private reconcileFeature(feature: FeatureId): void {
-		if (this.disposed) return;
-		if (feature === "usage") {
-			this.reconcileUsage();
-			return;
-		}
-		if (feature !== "hoverProvider" && feature !== "statusBar") return;
-
-		this._featureResources.get(feature)?.dispose();
-		this._featureResources.delete(feature);
-		if (feature === "statusBar") {
-			this._services.statusBar.setEnabled(
-				this.config.isFeatureEnabled("statusBar") && this.config.showInStatusBar,
-			);
-			return;
-		}
-		if (!this.config.isFeatureEnabled(feature)) return;
-
-		try {
-			if (feature === "hoverProvider") {
-				this._featureResources.set(
-					feature,
-					registerModelHoverProvider(this._services.cache, () => this._services.cache.age()),
-				);
-				log.info("Model hover provider registered");
-			}
-		} catch (error) {
-			this.diagnostics.recordFailure("config", error);
-			log.errorFields(
-				{ boundary: "configuration", feature },
-				`Feature registration failed for ${feature}:`,
-				error,
-			);
-		}
-	}
-
-	private reconcileUsage(): void {
-		if (this.disposed || !this.config.isFeatureEnabled("usage")) {
-			this.usageDashboardRegistration?.dispose();
-			this.usageDashboardRegistration = undefined;
-			this._featureResources.get("usage")?.dispose();
-			this._featureResources.delete("usage");
-			return;
-		}
-		if (this._featureResources.has("usage")) {
-			this.reconcileUsageDashboard();
-			return;
-		}
-
-		this.usagePolling = new UsagePollingService(
-			() =>
-				void observeRefresh({ label: "usage", eventBus: this._services.eventBus }, () =>
-					this.runInBackground("usage refresh", () => this._services.doUsageRefresh("scheduled")),
-				),
-		);
-		const usageResource = vscode.Disposable.from(
-			this.usagePolling,
-			ConfigService.instance.onAnyConfigChanged(() => {
-				if (!this.disposed && ConfigService.instance.isFeatureEnabled("usage")) {
-					this.reconcileUsageDashboard();
+	/**
+	 * Declarative lifecycle table: enabled predicate, resource factory,
+	 * configuration sync, and disable behavior for every runtime feature.
+	 */
+	private createFeatureLifecycles(): FeatureLifecycle[] {
+		return [
+			{
+				id: "statusBar",
+				isEnabled: () => this.config.isFeatureEnabled("statusBar"),
+				sync: () => this._services.statusBar.setEnabled(this.config.showInStatusBar),
+				deactivated: () => this._services.statusBar.setEnabled(false),
+			},
+			{
+				id: "hoverProvider",
+				isEnabled: () => this.config.isFeatureEnabled("hoverProvider"),
+				activate: () => {
+					const registration = registerModelHoverProvider(this._services.cache, () =>
+						this._services.cache.age(),
+					);
+					log.info("Model hover provider registered");
+					return registration;
+				},
+			},
+			{
+				id: "usage",
+				isEnabled: () => this.config.isFeatureEnabled("usage"),
+				activate: () => {
+					this.usagePolling = new UsagePollingService(
+						() =>
+							void observeRefresh({ label: "usage", eventBus: this._services.eventBus }, () =>
+								this.runInBackground("usage refresh", () =>
+									this._services.doUsageRefresh("scheduled"),
+								),
+							),
+					);
+					this.usageDashboardRegistration = new ToggledResource(() =>
+						vscode.window.registerWebviewViewProvider(
+							"openrouter-insights.usageDashboard",
+							this._services.usageDashboard,
+						),
+					);
+					return vscode.Disposable.from(this.usagePolling, this.usageDashboardRegistration);
+				},
+				sync: () => {
+					this.usageDashboardRegistration?.sync(this.config.usageShowDashboard);
 					this.usagePolling?.schedule();
-					this._services.usageStatusBar.setEnabled(ConfigService.instance.usageStatusBarEnabled);
-				}
-			}),
-		);
-		this._featureResources.set("usage", usageResource);
-		this.reconcileUsageDashboard();
-		this._services.usageStatusBar.setEnabled(ConfigService.instance.usageStatusBarEnabled);
-		if (
-			this.started &&
-			(ConfigService.instance.usageStatusBarEnabled || ConfigService.instance.usageShowDashboard)
-		)
-			this.runInBackground("usage refresh", () => this._services.doUsageRefresh());
+					this._services.usageStatusBar.setEnabled(this.config.usageStatusBarEnabled);
+				},
+				activated: () => {
+					if (
+						this.started &&
+						(this.config.usageStatusBarEnabled || this.config.usageShowDashboard)
+					) {
+						this.runInBackground("usage refresh", () => this._services.doUsageRefresh());
+					}
+				},
+				deactivated: () => {
+					this.usagePolling = undefined;
+					this.usageDashboardRegistration = undefined;
+				},
+			},
+		];
 	}
 
-	private reconcileUsageDashboard(): void {
-		const shouldShow = this.config.usageShowDashboard;
-		if (shouldShow && !this.usageDashboardRegistration) {
-			this.usageDashboardRegistration = vscode.window.registerWebviewViewProvider(
-				"openrouter-insights.usageDashboard",
-				this._services.usageDashboard,
-			);
-			return;
-		}
-		if (!shouldShow && this.usageDashboardRegistration) {
-			this.usageDashboardRegistration.dispose();
-			this.usageDashboardRegistration = undefined;
-		}
+	/** Converge one feature against current configuration (test/diagnostics hook). */
+	reconcileFeature(feature: FeatureId): void {
+		this._features.reconcile(feature);
 	}
 
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
-		for (const resource of [...this._featureResources.values()].reverse()) resource.dispose();
-		this._featureResources.clear();
 		for (const disposable of [...this._disposables].reverse()) disposable.dispose();
 		this._disposables.length = 0;
-		this.usageDashboardRegistration?.dispose();
+		this.usagePolling = undefined;
 		this.usageDashboardRegistration = undefined;
-		this._services.refreshCoordinator.dispose();
-		this._services.dispose();
-		ConfigService.instance.dispose();
 	}
 }

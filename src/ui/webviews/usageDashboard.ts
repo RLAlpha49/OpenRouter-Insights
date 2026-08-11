@@ -23,6 +23,7 @@ import { ConfigService, getCurrency, getCurrencyRate } from "../../infrastructur
 import { attr, text, PALETTE, buildDashboardDocument } from "../webviewAssets";
 import { deriveName } from "../../models/modelNameDeriver";
 import { formatShortDateLabel, formatTimestamp } from "../formatting/formatting";
+import type { UsageDashboardPresenter } from "../../use-cases/ports";
 
 /** Color for a usage percentage. */
 function pctColor(pct: number | null): string {
@@ -656,7 +657,7 @@ function isDashboardCommand(cmd: unknown): cmd is WebviewMessage["cmd"] {
 	);
 }
 
-export class UsageDashboardProvider implements vscode.WebviewViewProvider {
+export class UsageDashboardProvider implements vscode.WebviewViewProvider, UsageDashboardPresenter {
 	private _view: vscode.WebviewView | undefined;
 	private _panel: vscode.WebviewPanel | undefined;
 	/** Queued full-document render (sidebar only, used before view resolves). */

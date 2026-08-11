@@ -2,11 +2,20 @@
  * StatusBarPresenter — converts domain data into a StatusBarViewModel.
  * Contains all business-logic formatting decisions (which text to show,
  * which color to use, how to construct the tooltip).
+ *
+ * `createStatusBarPresenter` adapts `StatusBarView` to the application's
+ * `StatusBarPresenter` port so `StatusBarUpdateUseCase` publishes a resolved
+ * pricing state instead of building VS Code view models itself.
  */
 
 import * as vscode from "vscode";
 import type { ModelPricingInfo, CachedPricingData } from "../../types";
 import type { StatusBarViewModel } from "./statusBarView";
+import { StatusBarView } from "./statusBarView";
+import type {
+	StatusBarPresenter as StatusBarPresenterPort,
+	StatusBarPricingState,
+} from "../../use-cases/ports";
 import { getBlendWeights, getStatusBarMaxWidth } from "../../infrastructure/config";
 import {
 	buildPricingActionLinks,
@@ -47,6 +56,20 @@ export function buildStatusBarViewModel(
 		return buildMissingPricingVm(displayName);
 	}
 	return buildPricingVm(displayName, pricing, cache);
+}
+
+/**
+ * Adapt the concrete status-bar view to the application presenter port.
+ * View-model construction stays in the UI layer; the use case only publishes
+ * the resolved model, its pricing, and the catalog snapshot it came from.
+ */
+export function createStatusBarPresenter(view: StatusBarView): StatusBarPresenterPort {
+	return {
+		setEnabled: (enabled: boolean) => view.setEnabled(enabled),
+		setCommand: (command: string) => view.setCommand(command),
+		showPricing: (state: StatusBarPricingState) =>
+			view.render(buildStatusBarViewModel(state.displayName, state.pricing, state.data)),
+	};
 }
 
 function buildMissingPricingVm(displayName: string | undefined): StatusBarViewModel {

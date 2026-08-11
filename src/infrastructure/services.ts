@@ -1,294 +1,176 @@
 /**
- * Services / CompositionRoot — bundles all singletons created during
- * activation into a single object that can be passed to consumers.
+ * Composition root — assembles the activation-scoped service graph from four
+ * focused factories and returns an immutable container.
  *
- * Implements vscode.Disposable with proper reverse-creation-order cleanup.
- * Wires: PricingCache, Logger, EventBus, FeatureRegistry, StatusBarView,
- * UsageStatusBarView, UsageDashboardProvider, ModelPickerEnhancer,
- * RefreshUseCase, StatusBarUpdateUseCase, UsageRefreshUseCase, and all
- * commands (via the command pattern — see commands.ts and usageCommands.ts).
+ * Responsibilities are split so no single function owns every dependency:
+ *   `createApiServices`     — stores, secrets, credential boundary, transport
+ *   `createPricingServices` — pricing views and pricing workflows
+ *   `createUsageServices`   — usage views and the usage workflow
+ *   `createCommandServices` — the command map registered with VS Code
  *
- * Adding a new component just means adding one field here — no closure sprawl.
+ * Ownership of disposal is explicit: every factory registers what it creates
+ * with `RuntimeDisposables`, and `ServiceContainer.dispose` releases that
+ * record once, in reverse creation order. Consumers depend on the narrow
+ * contracts in `composition/contracts.ts` instead of this whole graph.
  */
 
-import * as vscode from "vscode";
 import type { ExtensionContext } from "vscode";
-import { PricingCache } from "../api/cache/pricingCache";
+import type * as vscode from "vscode";
 import type { IPricingCache } from "../api/cache/pricingStore";
-import { UsageCache } from "../api/cache/usageStore";
-import { SecretStorageService } from "../api/secretStorageService";
-import { StatusBarView } from "../ui/status/statusBarView";
-import { UsageStatusBarView } from "../ui/status/usageStatusBarView";
-import { UsageDashboardProvider } from "../ui/webviews/usageDashboard";
-import { ModelPickerEnhancer } from "../ui/model-browser/modelPickerEnhancer";
-import { RefreshUseCase } from "../use-cases/refreshUseCase";
-import { StatusBarUpdateUseCase } from "../use-cases/statusBarUpdateUseCase";
-import { UsageRefreshUseCase } from "../use-cases/usageRefreshUseCase";
+import type { SecretStorageService } from "../api/secretStorageService";
+import type { StatusBarView } from "../ui/status/statusBarView";
+import type { UsageStatusBarView } from "../ui/status/usageStatusBarView";
+import type { UsageDashboardProvider } from "../ui/webviews/usageDashboard";
+import type { ModelPickerEnhancer } from "../ui/model-browser/modelPickerEnhancer";
+import type { RefreshUseCase } from "../use-cases/refreshUseCase";
+import type { StatusBarUpdateUseCase } from "../use-cases/statusBarUpdateUseCase";
+import type { UsageRefreshUseCase } from "../use-cases/usageRefreshUseCase";
 import { log } from "./logger";
 import { EventBus } from "./eventBus";
 import { FeatureRegistry } from "./featureRegistry";
 import type { ICommand } from "./commands";
-import {
-	RefreshPricingCommand,
-	BrowseModelsCommand,
-	CompareModelsCommand,
-	SetModelOverrideCommand,
-	ShowLogsCommand,
-	ToggleStatusBarCommand,
-	ExportCsvCommand,
-	ExportJsonCommand,
-	AddToFavoritesCommand,
-	RemoveFromFavoritesCommand,
-	CopyModelIdCommand,
-	OpenOnOpenRouterCommand,
-	ShowQuickActionsCommand,
-	ClearCacheCommand,
-	ShowCacheInfoCommand,
-	ViewModelDetailCommand,
-	ClearSelectedModelCommand,
-	ShowRuntimeDiagnosticsCommand,
-} from "./commands";
-import {
-	SetApiKeyCommand,
-	RemoveApiKeyCommand,
-	RefreshUsageCommand,
-	LoadUsageDetailsCommand,
-	OpenUsageDashboardCommand,
-	OpenExpandedDashboardCommand,
-	SelectUsageKeyCommand,
-	CreateApiKeyCommand,
-	RenameApiKeyCommand,
-	ToggleApiKeyCommand,
-	SetKeyLimitCommand,
-	DeleteApiKeyCommand,
-} from "./usageCommands";
 import { ConfigService } from "./config";
 import { RefreshCoordinator } from "./refreshCoordinator";
 import type { RefreshReason } from "./refreshContext";
-import { PricingFetcher } from "../api/clients/pricingService";
-import { defaultHttpClient } from "../api/transport/httpClient";
-import { HttpPipeline, withEndpointPolicy, withLogging } from "../api/transport/httpPipeline";
-import { RuntimeDiagnostics } from "./runtimeDiagnostics";
-import { configureStateDbDiagnostics } from "../models/stateDbReader";
-import { setCredentialGeneration, clearAnalyticsCache } from "../api/clients/analyticsService";
+import type { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { RuntimeDisposables } from "./composition/runtimeDisposables";
+import { createApiServices } from "./composition/apiServices";
+import { createPricingServices } from "./composition/pricingServices";
+import { createUsageServices } from "./composition/usageServices";
+import { createCommandServices } from "./composition/commandServices";
 
-export interface RuntimeServices {
+export type {
+	CommandGate,
+	CommandServices,
+	CredentialProbe,
+	ModelDiscoveryCache,
+	RuntimeServices,
+	StatusBarRefresh,
+	ToggleableView,
+	UsageDetailRefresh,
+} from "./composition/contracts";
+export { RuntimeDisposables } from "./composition/runtimeDisposables";
+
+/**
+ * The complete activation graph. Every field is readonly: the container is a
+ * composed result, not a mutable service bag that consumers can reassign.
+ */
+export interface ServiceContainer extends vscode.Disposable {
 	readonly cache: IPricingCache;
 	readonly statusBar: StatusBarView;
 	readonly usageStatusBar: UsageStatusBarView;
 	readonly usageDashboard: UsageDashboardProvider;
 	readonly secrets: SecretStorageService;
 	readonly modelPicker: ModelPickerEnhancer;
+	readonly refreshUseCase: RefreshUseCase;
 	readonly statusBarUseCase: StatusBarUpdateUseCase;
 	readonly usageRefreshUseCase: UsageRefreshUseCase;
 	readonly eventBus: EventBus;
-	readonly refreshCoordinator: RefreshCoordinator;
-	readonly doRefresh: () => Promise<void>;
-	readonly doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
-	readonly diagnostics: RuntimeDiagnostics;
-}
-
-export interface CommandServices {
-	readonly commands: ReadonlyMap<string, ICommand>;
 	readonly features: FeatureRegistry;
-	readonly diagnostics: RuntimeDiagnostics;
-}
-
-export interface ServiceContainer extends RuntimeServices, CommandServices, vscode.Disposable {
-	cache: IPricingCache;
-	statusBar: StatusBarView;
-	usageStatusBar: UsageStatusBarView;
-	usageDashboard: UsageDashboardProvider;
-	secrets: SecretStorageService;
-	modelPicker: ModelPickerEnhancer;
-	refreshUseCase: RefreshUseCase;
-	statusBarUseCase: StatusBarUpdateUseCase;
-	usageRefreshUseCase: UsageRefreshUseCase;
-	eventBus: EventBus;
-	features: FeatureRegistry;
-	commands: ReadonlyMap<string, ICommand>;
+	readonly commands: ReadonlyMap<string, ICommand>;
 	/** Serializes outbound API refreshes across use cases. */
-	refreshCoordinator: RefreshCoordinator;
+	readonly refreshCoordinator: RefreshCoordinator;
 	/** Trigger a full pricing refresh, then update the status bar. */
-	doRefresh: () => Promise<void>;
+	readonly doRefresh: () => Promise<void>;
 	/** Trigger a usage refresh. */
-	doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
+	readonly doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
 	/** Show a loading indicator in the status bar (idempotent). */
-	showLoading: () => void;
+	readonly showLoading: () => void;
 	/** Clear the loading indicator on the status bar. */
-	clearLoading: () => void;
-	diagnostics: RuntimeDiagnostics;
+	readonly clearLoading: () => void;
+	readonly diagnostics: RuntimeDiagnostics;
 }
 
 export function createServices(context: ExtensionContext): ServiceContainer {
-	const diagnostics = new RuntimeDiagnostics();
-	const cache = new PricingCache(context, ConfigService.instance, diagnostics);
-	configureStateDbDiagnostics(diagnostics);
-	const usageCache = new UsageCache();
-	const secrets = new SecretStorageService(context);
-	const authenticatedHttpPipeline = new HttpPipeline(
-		defaultHttpClient,
-		[
-			withLogging(log),
-			withEndpointPolicy({
-				apiKeyProvider: () => secrets.get(),
-				managementKeyProvider: () => secrets.get(),
-			}),
-		],
-		diagnostics,
-	);
-	const statusBar = new StatusBarView();
-	const usageStatusBar = new UsageStatusBarView();
-	const modelPicker = new ModelPickerEnhancer();
-	const eventBus = new EventBus();
-	const refreshUseCase = new RefreshUseCase(
-		cache,
-		ConfigService.instance,
-		new PricingFetcher(log, diagnostics),
-		authenticatedHttpPipeline,
+	const disposables = new RuntimeDisposables();
+	const config = ConfigService.instance;
+	const eventBus = disposables.add(new EventBus());
+
+	const api = createApiServices(context, disposables);
+	const pricing = createPricingServices({
+		cache: api.cache,
+		config,
+		httpClient: api.httpPipeline,
 		eventBus,
-		diagnostics,
-	);
-	const statusBarUseCase = new StatusBarUpdateUseCase(
-		cache,
-		statusBar,
-		modelPicker,
-		ConfigService.instance,
+		diagnostics: api.diagnostics,
+		disposables,
+	});
+	const usage = createUsageServices({
+		usageCache: api.usageCache,
+		secrets: api.secrets,
+		pricingIndex: api.cache,
+		config,
+		httpClient: api.httpPipeline,
 		eventBus,
-	);
-	const usageDashboard = new UsageDashboardProvider(cache);
-	const usageRefreshUseCase = new UsageRefreshUseCase(
-		usageCache,
-		secrets,
-		usageStatusBar,
-		usageDashboard,
-		ConfigService.instance,
-		authenticatedHttpPipeline,
-		eventBus,
-		log,
-		diagnostics,
-	);
-	const features = new FeatureRegistry();
-	const refreshCoordinator = new RefreshCoordinator(diagnostics);
+		logger: log,
+		diagnostics: api.diagnostics,
+		disposables,
+	});
+
+	const features = disposables.add(new FeatureRegistry());
+	const refreshCoordinator = disposables.add(new RefreshCoordinator(api.diagnostics));
 
 	const doRefresh = async () => {
 		await refreshCoordinator.acquire("pricing", "user", async (ctx) => {
-			statusBar.showLoading();
+			pricing.statusBar.showLoading();
 			eventBus.emit("refreshStarted", undefined);
 			try {
-				await refreshUseCase.execute(ctx);
+				await pricing.refreshUseCase.execute(ctx);
 				if (ctx.isCancelled()) return;
-				const cachedData = cache.get();
+				const cachedData = api.cache.get();
 				if (cachedData) {
 					eventBus.emit("pricingRefreshed", cachedData);
 				}
-				await statusBarUseCase.execute();
+				await pricing.statusBarUseCase.execute();
 			} finally {
-				statusBar.clearLoading();
+				pricing.statusBar.clearLoading();
 			}
 		});
 	};
 
 	const doUsageRefresh = async (reason: RefreshReason = "user") => {
 		await refreshCoordinator.acquire("usage", reason, (ctx) =>
-			usageRefreshUseCase.execute(undefined, ctx),
+			usage.usageRefreshUseCase.execute(undefined, ctx),
 		);
 	};
 
-	const showLoading = () => statusBar.showLoading();
-	const clearLoading = () => statusBar.clearLoading();
-
-	// Single credential-change invalidation boundary for authenticated derived
-	// data. Rotation or removal advances SecretStorageService's generation and
-	// clears the process-local analytics cache so results from a previous
-	// credential are never served afterwards.
-	const credentialChangeSubscription = secrets.onCredentialChange((event) => {
-		setCredentialGeneration(event.generation);
-		clearAnalyticsCache();
+	const commands = createCommandServices({
+		cache: api.cache,
+		usageCache: api.usageCache,
+		secrets: api.secrets,
+		statusBar: pricing.statusBar,
+		modelPicker: pricing.modelPicker,
+		usageRefreshUseCase: usage.usageRefreshUseCase,
+		eventBus,
+		diagnostics: api.diagnostics,
+		httpClient: api.httpPipeline,
+		features,
+		doRefresh,
+		doUsageRefresh: () => doUsageRefresh(),
+		openExpandedDashboard: () => usage.usageDashboard.openExpandedPanel(),
 	});
 
-	// ── Command instances ──────────────────────────────────
-	const commandMap = new Map<string, ICommand>();
+	log.info("ServiceContainer: registered", commands.size, "commands");
 
-	const addCmd = (cmd: ICommand) => {
-		commandMap.set(cmd.id, cmd);
-	};
-
-	addCmd(new RefreshPricingCommand(doRefresh));
-	addCmd(new BrowseModelsCommand(cache, modelPicker));
-	addCmd(new CompareModelsCommand(cache, modelPicker));
-	addCmd(new SetModelOverrideCommand(cache, modelPicker));
-	addCmd(new ShowLogsCommand());
-	addCmd(new ToggleStatusBarCommand(statusBar));
-	addCmd(new ExportCsvCommand(cache));
-	addCmd(new ExportJsonCommand(cache));
-	addCmd(new AddToFavoritesCommand());
-	addCmd(new RemoveFromFavoritesCommand());
-	addCmd(new CopyModelIdCommand(cache, modelPicker, eventBus));
-	addCmd(new OpenOnOpenRouterCommand(cache, modelPicker));
-	addCmd(
-		new ShowQuickActionsCommand(commandMap, (commandId) =>
-			features.shouldRegisterCommand(commandId),
-		),
-	);
-	addCmd(new ClearCacheCommand(cache));
-	addCmd(new ShowCacheInfoCommand(cache, diagnostics));
-	addCmd(new ShowRuntimeDiagnosticsCommand(diagnostics));
-	addCmd(new ViewModelDetailCommand(cache, modelPicker));
-	addCmd(new ClearSelectedModelCommand());
-
-	// Usage commands
-	addCmd(new SetApiKeyCommand(secrets, doUsageRefresh));
-	addCmd(new RemoveApiKeyCommand(secrets, () => usageRefreshUseCase.clear()));
-	addCmd(new RefreshUsageCommand(usageRefreshUseCase));
-	addCmd(new LoadUsageDetailsCommand(usageRefreshUseCase));
-	addCmd(new OpenUsageDashboardCommand());
-	addCmd(new OpenExpandedDashboardCommand(() => usageDashboard.openExpandedPanel()));
-	addCmd(new SelectUsageKeyCommand((keyHash) => usageRefreshUseCase.executeWithKey(keyHash)));
-
-	addCmd(new CreateApiKeyCommand(secrets, doUsageRefresh, authenticatedHttpPipeline));
-	addCmd(new RenameApiKeyCommand(secrets, usageCache, doUsageRefresh, authenticatedHttpPipeline));
-	addCmd(new ToggleApiKeyCommand(secrets, usageCache, doUsageRefresh, authenticatedHttpPipeline));
-	addCmd(new SetKeyLimitCommand(secrets, usageCache, doUsageRefresh, authenticatedHttpPipeline));
-	addCmd(new DeleteApiKeyCommand(secrets, usageCache, doUsageRefresh, authenticatedHttpPipeline));
-
-	log.info("ServiceContainer: registered", commandMap.size, "commands");
-
-	let disposed = false;
-	const dispose = () => {
-		if (disposed) return;
-		disposed = true;
-		credentialChangeSubscription.dispose();
-		// ExtensionRuntime owns the coordinator lifetime; the container owns
-		// services created here and may be disposed independently in tests.
-		features.dispose();
-		eventBus.dispose();
-		clearLoading();
-		statusBar.dispose();
-		usageStatusBar.dispose();
-		modelPicker.dispose();
-		secrets.dispose();
-	};
-
-	return {
-		cache,
-		statusBar,
-		usageStatusBar,
-		usageDashboard,
-		secrets,
-		modelPicker,
-		refreshUseCase,
-		statusBarUseCase,
-		usageRefreshUseCase,
+	return Object.freeze({
+		cache: api.cache,
+		statusBar: pricing.statusBar,
+		usageStatusBar: usage.usageStatusBar,
+		usageDashboard: usage.usageDashboard,
+		secrets: api.secrets,
+		modelPicker: pricing.modelPicker,
+		refreshUseCase: pricing.refreshUseCase,
+		statusBarUseCase: pricing.statusBarUseCase,
+		usageRefreshUseCase: usage.usageRefreshUseCase,
 		eventBus,
 		features,
-		commands: commandMap,
+		commands,
+		refreshCoordinator,
 		doRefresh,
 		doUsageRefresh,
-		showLoading,
-		clearLoading,
-		diagnostics,
-		dispose,
-		refreshCoordinator,
-	};
+		showLoading: () => pricing.statusBar.showLoading(),
+		clearLoading: () => pricing.statusBar.clearLoading(),
+		diagnostics: api.diagnostics,
+		dispose: () => disposables.dispose(),
+	});
 }

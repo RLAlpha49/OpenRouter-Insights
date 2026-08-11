@@ -1,21 +1,20 @@
 /**
  * StatusBarUpdateUseCase — coordinates model resolution, pricing lookup,
- * filtering, and UI rendering for the status bar update cycle.
+ * filtering, and status-bar publication.
  *
  * Extracted from extension.ts so it can be unit-tested with a fake
- * cache, resolver, and presenter.
+ * cache, resolver, and presenter. The resolved state is published through
+ * `StatusBarPresenter`; view-model construction belongs to the host adapter.
  */
 
 import type { IPricingCache } from "../api/cache/pricingStore";
 import type { ModelPricingInfo } from "../types";
 import { resolveModelId } from "../models/modelResolver";
 import { getLastStateDbDiagnostic } from "../models/stateDbReader";
-import { StatusBarView } from "../ui/status/statusBarView";
-import { buildStatusBarViewModel } from "../ui/status/statusBarPresenter";
-import { ModelPickerEnhancer } from "../ui/model-browser/modelPickerEnhancer";
 import type { ReadonlyConfig } from "../infrastructure/config";
 import type { EventBus } from "../infrastructure/eventBus";
 import { log } from "../infrastructure/logger";
+import type { ModelSelectionCache, StatusBarPresenter } from "./ports";
 
 /** Compile-time exhaustive switch guard — throws at runtime if reached. */
 function assertNever(value: never): never {
@@ -27,13 +26,13 @@ export class StatusBarUpdateUseCase {
 	private _lastPricingStatus: "found" | "missing" | undefined;
 	private _pending: Promise<void> | undefined;
 	private readonly _cache: IPricingCache;
-	private readonly _statusBar: StatusBarView;
-	private readonly _modelPicker: ModelPickerEnhancer;
+	private readonly _statusBar: StatusBarPresenter;
+	private readonly _modelPicker: ModelSelectionCache;
 
 	constructor(
 		cache: IPricingCache,
-		statusBar: StatusBarView,
-		modelPicker: ModelPickerEnhancer,
+		statusBar: StatusBarPresenter,
+		modelPicker: ModelSelectionCache,
 		private readonly _config: ReadonlyConfig,
 		private readonly _eventBus: EventBus,
 	) {
@@ -121,8 +120,7 @@ export class StatusBarUpdateUseCase {
 			data ? `${data.models.length} models` : "MISSING",
 		);
 
-		const vm = buildStatusBarViewModel(displayName, pricing, data);
-		this._statusBar.render(vm);
+		this._statusBar.showPricing({ displayName, pricing, data });
 
 		// Emit model-changed event for downstream consumers (e.g. ModelPickerEnhancer)
 		this._eventBus.emit("modelChanged", { modelId, displayName });

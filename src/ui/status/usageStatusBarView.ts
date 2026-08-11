@@ -16,6 +16,7 @@ import type { UsageStats } from "../../types-usage";
 import { formatCurrencyPrice } from "../formatting/currencyService";
 import { formatTimestamp } from "../formatting/formatting";
 import { getCurrency, getCurrencyRate } from "../../infrastructure/config";
+import type { UsageStatusPresenter } from "../../use-cases/ports";
 
 export interface UsageStatusBarViewModel {
 	text: string;
@@ -36,7 +37,7 @@ export function getAvailableCredits(usage: UsageStats): number | null {
 	return balances.length > 0 ? Math.max(0, Math.min(...balances)) : null;
 }
 
-export class UsageStatusBarView implements vscode.Disposable {
+export class UsageStatusBarView implements vscode.Disposable, UsageStatusPresenter {
 	private readonly item: vscode.StatusBarItem;
 	private enabled = true;
 

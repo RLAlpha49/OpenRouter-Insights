@@ -231,6 +231,9 @@ describe("usage commands", () => {
 		const secret = secrets();
 		const refresh = vi.fn(async () => {});
 		const cache = usageStore();
+		// Server error — the transport retries transient failures with real
+		// exponential backoff before rethrowing, so this test needs a longer
+		// timeout than the suite default.
 		const client = { fetch: vi.fn(async () => new Response("bad", { status: 500 })) } as any;
 		(vscode.window as any).showInputBox = vi.fn(async () => "Renamed");
 		(vscode.window as any).showWarningMessage = vi.fn(async () => "Disable");
@@ -242,7 +245,7 @@ describe("usage commands", () => {
 			new ToggleApiKeyCommand(secret as any, cache as any, refresh, client).execute("hash-1"),
 		).rejects.toThrow();
 		expect(vscode.window.showErrorMessage as any).toHaveBeenCalled();
-	});
+	}, 15000);
 
 	it("cancels limit and toggle commands on confirmation", async () => {
 		const secret = secrets();

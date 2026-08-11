@@ -5,15 +5,15 @@
  *   1. Check if API key exists
  *   2. Fetch usage from OpenRouter
  *   3. Persist to UsageCache
- *   4. Notify status bar + dashboard to re-render
+ *   4. Publish the new state to the usage presenters
  *
- * Guards against concurrent refresh calls.
+ * Guards against concurrent refresh calls. Presentation happens through the
+ * `UsageStatusPresenter` and `UsageDashboardPresenter` ports, so this workflow
+ * never depends on a concrete VS Code view.
  */
 
 import type { IUsageStore } from "../api/cache/usageStore";
 import type { SecretStorageService } from "../api/secretStorageService";
-import type { UsageStatusBarView } from "../ui/status/usageStatusBarView";
-import type { UsageDashboardProvider } from "../ui/webviews/usageDashboard";
 import { fetchUsageStats } from "../api/clients/usageService";
 import { log, formatError, formatErrorBrief } from "../infrastructure/logger";
 import type { ReadonlyConfig } from "../infrastructure/config";
@@ -25,6 +25,7 @@ import type { UsageStats } from "../types-usage";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
 import type { RequestObservation } from "../api/transport/fetchHelpers";
 import { fetchUsageDetails } from "../api/clients/usageDetailsService";
+import type { UsageDashboardPresenter, UsageStatusPresenter } from "./ports";
 
 export class UsageRefreshUseCase {
 	private _pending: Promise<void> | undefined;
@@ -39,8 +40,8 @@ export class UsageRefreshUseCase {
 	constructor(
 		private readonly _cache: IUsageStore,
 		private readonly _secrets: SecretStorageService,
-		private readonly _statusBar: UsageStatusBarView,
-		private readonly _dashboard: UsageDashboardProvider,
+		private readonly _statusBar: UsageStatusPresenter,
+		private readonly _dashboard: UsageDashboardPresenter,
 		private readonly _config: ReadonlyConfig,
 		private readonly _client?: HttpClient,
 		private readonly _eventBus?: EventBus,

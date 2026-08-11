@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
-import { createServices } from "./infrastructure/services";
 import { ConfigService, initConfigLogger } from "./infrastructure/config";
 import { initLogger, log } from "./infrastructure/logger";
-import { ExtensionRuntime } from "./infrastructure/extensionRuntime";
+import { ExtensionActivation } from "./infrastructure/activation";
+
+/** The activation handle that owns every activation-scoped resource. */
+let activation: ExtensionActivation | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	initLogger(context);
@@ -12,22 +14,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	dumpConfig(log);
 
-	let runtime: ExtensionRuntime | undefined;
-	let services: ReturnType<typeof createServices> | undefined;
+	let handle: ExtensionActivation | undefined;
 	try {
-		services = createServices(context);
+		handle = ExtensionActivation.create(context);
+		activation = handle;
+		// One registration, one owner: the host disposes the whole activation.
+		context.subscriptions.push(handle);
 		log.info(
 			"Cache age:",
-			services.cache.age(),
+			handle.services.cache.age(),
 			"| models loaded:",
-			services.cache.getLookup().size,
+			handle.services.cache.getLookup().size,
 		);
-		runtime = new ExtensionRuntime(context, services);
-		context.subscriptions.push(runtime);
-		await runtime.start();
+		await handle.start();
 	} catch (error) {
-		runtime?.dispose();
-		if (!runtime) services?.dispose();
+		handle?.dispose();
+		activation = undefined;
 		log.error("Extension activation failed:", error);
 		throw error;
 	}
@@ -36,6 +38,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
+	activation?.dispose();
+	activation = undefined;
 	log.info("===== OpenRouter Insights deactivated =====");
 }
 
