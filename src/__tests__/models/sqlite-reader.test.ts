@@ -23,6 +23,10 @@ import {
 
 let tmpDir: string;
 
+// WAL stress fixtures are substantially slower on Windows because each update
+// creates a committed WAL frame and exercises filesystem durability.
+const SQLITE_STRESS_TEST_TIMEOUT = 60_000;
+
 beforeEach(() => {
 	tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sqlite-reader-test-"));
 	invalidateSchemaCache();
@@ -127,22 +131,26 @@ describe("readItemTableValueWalAware", () => {
 		expect(result.value).toBe("v1");
 	});
 
-	it("does not publish a value from a capped WAL snapshot as successful", () => {
-		const dbPath = path.join(tmpDir, "state.vscdb");
-		const db = createStateDb(dbPath, [["k1", "v1"]]);
-		db.exec("PRAGMA journal_mode=WAL");
-		db.exec("PRAGMA wal_autocheckpoint=0");
-		const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
-		for (let index = 0; index < 4097; index++) {
-			update.run(`v${index}`, "k1");
-		}
+	it(
+		"does not publish a value from a capped WAL snapshot as successful",
+		() => {
+			const dbPath = path.join(tmpDir, "state.vscdb");
+			const db = createStateDb(dbPath, [["k1", "v1"]]);
+			db.exec("PRAGMA journal_mode=WAL");
+			db.exec("PRAGMA wal_autocheckpoint=0");
+			const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
+			for (let index = 0; index < 4097; index++) {
+				update.run(`v${index}`, "k1");
+			}
 
-		const result = readItemTableValueWalAware(dbPath, "k1");
-		db.close();
+			const result = readItemTableValueWalAware(dbPath, "k1");
+			db.close();
 
-		expect(result.diagnostic).toBe("wal-incomplete");
-		expect(result.value).toBeUndefined();
-	});
+			expect(result.diagnostic).toBe("wal-incomplete");
+			expect(result.value).toBeUndefined();
+		},
+		SQLITE_STRESS_TEST_TIMEOUT,
+	);
 
 	it("returns wal-unreadable for a corrupt WAL file", () => {
 		const dbPath = path.join(tmpDir, "state.vscdb");
@@ -286,40 +294,48 @@ describe("partial B-tree scan surfacing (DB-003)", () => {
 		expect(result.scan?.invalidCellPointers).toBe(0);
 	});
 
-	it("surfaces scan health alongside a capped WAL snapshot", () => {
-		const dbPath = path.join(tmpDir, "state.vscdb");
-		const db = createStateDb(dbPath, [["k1", "v1"]]);
-		db.exec("PRAGMA journal_mode=WAL");
-		db.exec("PRAGMA wal_autocheckpoint=0");
-		const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
-		for (let index = 0; index < 4097; index++) {
-			update.run(`v${index}`, "k1");
-		}
+	it(
+		"surfaces scan health alongside a capped WAL snapshot",
+		() => {
+			const dbPath = path.join(tmpDir, "state.vscdb");
+			const db = createStateDb(dbPath, [["k1", "v1"]]);
+			db.exec("PRAGMA journal_mode=WAL");
+			db.exec("PRAGMA wal_autocheckpoint=0");
+			const update = db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?");
+			for (let index = 0; index < 4097; index++) {
+				update.run(`v${index}`, "k1");
+			}
 
-		const result = readItemTableValueWalAware(dbPath, "k1");
-		db.close();
+			const result = readItemTableValueWalAware(dbPath, "k1");
+			db.close();
 
-		expect(result.diagnostic).toBe("wal-incomplete");
-		expect(result.scan).toBeDefined();
-	});
+			expect(result.diagnostic).toBe("wal-incomplete");
+			expect(result.scan).toBeDefined();
+		},
+		SQLITE_STRESS_TEST_TIMEOUT,
+	);
 
-	it("returns partial-scan (not no-match) when a leaf page is undecodable", () => {
-		const dbPath = path.join(tmpDir, "state.vscdb");
-		// Enough rows to force an interior root with multiple leaf pages.
-		const rows: Array<[string, string]> = [];
-		for (let i = 0; i < 1000; i++) rows.push([`key-${i}`, `value-${i}`]);
-		createStateDb(dbPath, rows).close();
+	it(
+		"returns partial-scan (not no-match) when a leaf page is undecodable",
+		() => {
+			const dbPath = path.join(tmpDir, "state.vscdb");
+			// Enough rows to force an interior root with multiple leaf pages.
+			const rows: Array<[string, string]> = [];
+			for (let i = 0; i < 1000; i++) rows.push([`key-${i}`, `value-${i}`]);
+			createStateDb(dbPath, rows).close();
 
-		// Zero page 2 (a leaf page) so the B-tree walk skips it. The main
-		// file header (page 1, the schema root) stays intact so the database
-		// still opens, but the scan is no longer complete.
-		const buf = fs.readFileSync(dbPath);
-		buf.fill(0, 4096, 8192);
-		fs.writeFileSync(dbPath, buf);
+			// Zero page 2 (a leaf page) so the B-tree walk skips it. The main
+			// file header (page 1, the schema root) stays intact so the database
+			// still opens, but the scan is no longer complete.
+			const buf = fs.readFileSync(dbPath);
+			buf.fill(0, 4096, 8192);
+			fs.writeFileSync(dbPath, buf);
 
-		const result = readItemTableValueDetailed(dbPath, "definitely-missing-key");
-		expect(result.diagnostic).toBe("partial-scan");
-		expect(result.scan?.complete).toBe(false);
-		expect(result.scan?.skippedPages).toBeGreaterThan(0);
-	});
+			const result = readItemTableValueDetailed(dbPath, "definitely-missing-key");
+			expect(result.diagnostic).toBe("partial-scan");
+			expect(result.scan?.complete).toBe(false);
+			expect(result.scan?.skippedPages).toBeGreaterThan(0);
+		},
+		SQLITE_STRESS_TEST_TIMEOUT,
+	);
 });
