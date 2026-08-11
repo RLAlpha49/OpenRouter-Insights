@@ -2,7 +2,7 @@
 	"name": "openrouter-insights",
 	"displayName": "OpenRouter Insights",
 	"description": "Display OpenRouter API pricing and track your OpenRouter account usage in VS Code",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"publisher": "RLAlpha49",
 	"license": "MIT",
 	"repository": {

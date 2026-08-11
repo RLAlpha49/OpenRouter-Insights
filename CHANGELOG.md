@@ -1,5 +1,7 @@
 # Changelog
 
+## [1.1.0](https://github.com/RLAlpha49/OpenRouter-Insights/compare/v1.0.0...v1.1.0) (2026-08-11)
+
 ## 1.0.0 (2026-08-08)
 
 - Add OpenRouter model pricing to the VS Code status bar.
