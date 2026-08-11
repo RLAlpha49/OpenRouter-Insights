@@ -24,6 +24,7 @@ import { noopApiLogger } from "../logger";
 import type { HttpClient } from "../transport/httpClient";
 import { defaultHttpClient } from "../transport/httpClient";
 import { classifyError } from "../transport/fetchHelpers";
+import type { RequestObservation } from "../transport/fetchHelpers";
 import { OpenRouterHttpError } from "../transport/openRouterError";
 import { fetchModelSpendBreakdown } from "./analyticsService";
 import { fetchUsageStats } from "./usageService";
@@ -41,6 +42,7 @@ import {
 const ACTIVITY_CONCURRENCY = 3;
 
 /** Fetch history and optional analytics only for an intentional detail view. */
+/* eslint-disable-next-line max-params */
 export async function fetchUsageDetails(
 	apiKey: string,
 	selectedKeyHash: string | undefined,
@@ -50,17 +52,27 @@ export async function fetchUsageDetails(
 	signal?: AbortSignal,
 	onProgress?: ProgressCallback,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<UsageStats> {
 	const currentBaseline =
 		options.baseline ??
-		(await fetchUsageStats(apiKey, selectedKeyHash, client, baseUrl, signal, onProgress, logger));
+		(await fetchUsageStats(
+			apiKey,
+			selectedKeyHash,
+			client,
+			baseUrl,
+			signal,
+			onProgress,
+			logger,
+			onRequestObservation,
+		));
 	if (currentBaseline.mode !== "management") return currentBaseline;
 
 	const urls = getUrls(trustedUsageBaseUrl(baseUrl));
 
 	onProgress?.("Fetching usage activity…");
 	const [activityResult, perKeyActivityHistory, enrichment] = await Promise.all([
-		fetchActivity(apiKey, client, urls, signal, logger, onProgress),
+		fetchActivity(apiKey, client, urls, signal, logger, onProgress, onRequestObservation),
 		fetchPerKeyActivity(
 			apiKey,
 			client,
@@ -71,7 +83,16 @@ export async function fetchUsageDetails(
 			logger,
 			onProgress,
 		),
-		fetchOptionalAnalytics(options, apiKey, client, urls, signal, logger, onProgress),
+		fetchOptionalAnalytics(
+			options,
+			apiKey,
+			client,
+			urls,
+			signal,
+			logger,
+			onProgress,
+			onRequestObservation,
+		),
 	]);
 	return buildUsageDetails(
 		currentBaseline,
@@ -197,10 +218,19 @@ function fetchOptionalAnalytics(
 	signal: AbortSignal | undefined,
 	logger: ApiLogger,
 	onProgress?: ProgressCallback,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<Awaited<ReturnType<typeof fetchAnalyticsEnrichment>>> {
 	if (!options.includeAnalytics) return Promise.resolve({ analytics: null });
 	onProgress?.("Fetching analytics data…");
-	return fetchAnalyticsEnrichment(apiKey, client, urls, signal, logger, options.lookbackDays ?? 30);
+	return fetchAnalyticsEnrichment(
+		apiKey,
+		client,
+		urls,
+		signal,
+		logger,
+		options.lookbackDays ?? 30,
+		onRequestObservation,
+	);
 }
 
 /** Fetch account activity history (management only). Returns null when the call fails. */
@@ -211,6 +241,7 @@ async function fetchActivity(
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
 	onProgress?: ProgressCallback,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<{
 	endpoint: "activity.list";
 	data: DailyUsagePoint[] | null;
@@ -225,7 +256,7 @@ async function fetchActivity(
 			client,
 			"activity.list",
 			undefined,
-			{ signal, logger },
+			{ signal, logger, onRequestObservation },
 		);
 		const points = toDailyUsagePoints(activityRes.value.data);
 		logger.info(
@@ -259,6 +290,7 @@ async function fetchAnalyticsEnrichment(
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
 	daysBack = 30,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<{
 	analytics: AnalyticsResult | null;
 	unavailableReason?: "managementKeyRequired" | "unavailable";
@@ -273,6 +305,7 @@ async function fetchAnalyticsEnrichment(
 			urls.BASE_URL,
 			signal,
 			logger,
+			onRequestObservation,
 		);
 		return { analytics };
 	} catch (err) {

@@ -210,10 +210,22 @@ export class PricingCache implements IPricingCache {
 		// Structural validation — guard against partial writes and schema drift
 		if (!Array.isArray(raw.models)) {
 			log.warn("Cache validation failed: models is not an array, discarding");
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "validate",
+				diagnostic: "invalid",
+				fallback: "discarded",
+			});
 			return undefined;
 		}
 		if (typeof raw.fetchedAt !== "string") {
 			log.warn("Cache validation failed: fetchedAt is not a string, discarding");
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "validate",
+				diagnostic: "invalid",
+				fallback: "discarded",
+			});
 			return undefined;
 		}
 		if (raw.pagination !== undefined) {
@@ -255,6 +267,12 @@ export class PricingCache implements IPricingCache {
 		}
 		if (validModels.length === 0) {
 			log.warn("Cache validation failed: no valid model entries remain, discarding");
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "validate",
+				diagnostic: "no-valid-entries",
+				fallback: "discarded",
+			});
 			return undefined;
 		}
 		raw.models = validModels;
@@ -283,6 +301,12 @@ export class PricingCache implements IPricingCache {
 
 		let serializedBytes = measure(data);
 		this._lastSerializedBytes = serializedBytes;
+		this._diagnostics?.recordBoundary({
+			kind: "cache",
+			operation: "set",
+			diagnostic: serializedBytes > CACHE_SIZE_MAX ? "oversized-pending" : "pending",
+			sizeBucket: `${(serializedBytes / 1_000_000).toFixed(1)}MB`,
+		});
 
 		if (serializedBytes > CACHE_SIZE_MAX) {
 			const nonDeprecated = modelsToWrite.filter((m) => !m.isDeprecated);
@@ -310,6 +334,13 @@ export class PricingCache implements IPricingCache {
 					`${(CACHE_SIZE_MAX / 1_000_000).toFixed(1)} MB budget after trimming. ` +
 					"Preserving previous cache.",
 			);
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "set",
+				diagnostic: "rejected",
+				sizeBucket: `${(serializedBytes / 1_000_000).toFixed(1)}MB`,
+				fallback: "preserved-previous",
+			});
 			return {
 				admitted: false,
 				modelCount: 0,
@@ -352,6 +383,12 @@ export class PricingCache implements IPricingCache {
 			this.rebuildLookup(data);
 			this._memCache = data;
 			this._memCacheValid = true;
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "set",
+				diagnostic: "written",
+				sizeBucket: `${(this._lastSerializedBytes / 1_000_000).toFixed(1)}MB`,
+			});
 			return {
 				admitted: true,
 				modelCount: modelsToWrite.length,
@@ -360,6 +397,13 @@ export class PricingCache implements IPricingCache {
 		} catch (err) {
 			this._lastWriteMs = Date.now() - startedAt;
 			log.error("Failed to persist cache:", formatError(err));
+			this._diagnostics?.recordBoundary({
+				kind: "cache",
+				operation: "set",
+				diagnostic: "write-failed",
+				sizeBucket: `${(this._lastSerializedBytes / 1_000_000).toFixed(1)}MB`,
+				fallback: "preserved-previous",
+			});
 			void vscode.window.showWarningMessage(
 				"OpenRouter Insights: Pricing updated but couldn't be saved. " +
 					"Data may be lost after restart. Check disk space.",

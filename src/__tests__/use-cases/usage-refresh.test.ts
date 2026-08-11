@@ -9,13 +9,16 @@ import type { IUsageStore } from "../../api/cache/usageStore";
 import type { UsageStats } from "../../types-usage";
 import { createFakeReadonlyConfig } from "../__mocks__/config-test-helpers";
 import { createRefreshContext } from "../../infrastructure/refreshContext";
-import { fetchUsageDetails, fetchUsageStats } from "../../api/clients/usageService";
+import { fetchUsageStats } from "../../api/clients/usageService";
 import { getAvailableCredits } from "../../ui/status/usageStatusBarView";
 import { EventBus } from "../../infrastructure/eventBus";
+import { fetchUsageDetails } from "../../api/clients/usageDetailsService";
 
 vi.mock("../../api/clients/usageService", () => ({
-	fetchUsageDetails: vi.fn(),
 	fetchUsageStats: vi.fn(),
+}));
+vi.mock("../../api/clients/usageDetailsService", () => ({
+	fetchUsageDetails: vi.fn(),
 }));
 
 class FakeSecretStorageService {

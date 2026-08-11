@@ -6,6 +6,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { HttpClient } from "../../api/transport/httpClient";
 import { ANALYTICS_ROW_BUDGET } from "../../api/clients/analyticsService";
+import { createApiKey, deleteApiKey, updateApiKey } from "../../api/clients/usageKeyManagement";
 import { getEndpointRetryPolicy } from "../../api/endpoint/endpointCatalog";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -97,7 +98,8 @@ const analyticsResponse = {
 	],
 };
 
-import { fetchUsageDetails, fetchUsageStats } from "../../api/clients/usageService";
+import { fetchUsageStats } from "../../api/clients/usageService";
+import { fetchUsageDetails } from "../../api/clients/usageDetailsService";
 
 describe("fetchUsageStats", () => {
 	it("returns regular key stats", async () => {
@@ -306,7 +308,6 @@ describe("fetchUsageStats", () => {
 				return jsonResponse({ data: { success: true } });
 			},
 		};
-		const { createApiKey } = await import("../../api/clients/usageService");
 		await expect(createApiKey("sk-mgmt", { name: "New key" }, client)).rejects.toMatchObject({
 			errorClass: "malformed-response",
 		});
@@ -381,8 +382,6 @@ describe("fetchUsageStats", () => {
 				});
 			},
 		};
-		const { deleteApiKey, updateApiKey } = await import("../../api/clients/usageService");
-
 		await updateApiKey("sk-mgmt", "hash-abc", { name: "Renamed" }, client);
 		await deleteApiKey("sk-mgmt", "hash-abc", client);
 

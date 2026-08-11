@@ -8,6 +8,7 @@ import { createStateDbWatcher } from "./stateDbWatcher";
 import { UsagePollingService } from "./usagePollingService";
 import { formatErrorBrief, log } from "./logger";
 import { registerCommands } from "./commandRegistrar";
+import { observeRefresh } from "./refreshObservation";
 import type { RuntimeServices, ServiceContainer } from "./services";
 import { registerModelHoverProvider } from "../ui/webviews/modelHoverProvider";
 import { computeBlendedRate } from "../api/clients/pricingService";
@@ -50,12 +51,24 @@ export class ExtensionRuntime implements vscode.Disposable {
 		this.config = ConfigService.instance;
 		this.diagnostics = _services.diagnostics ?? new RuntimeDiagnostics();
 		this.refreshScheduler = new RefreshScheduler(
-			() => void this._services.doRefresh(),
+			() =>
+				void observeRefresh({ label: "pricing", eventBus: this._services.eventBus }, () =>
+					this._services.doRefresh(),
+				),
 			this.config,
 		);
 		this.modelPolling = new ModelPollingService(
-			() => this.runInBackground("status bar", () => this._services.statusBarUseCase.execute()),
+			() =>
+				void observeRefresh({ label: "statusBar", eventBus: this._services.eventBus }, () =>
+					this.runInBackground("status bar", () => this._services.statusBarUseCase.execute()),
+				),
 			this.config,
+			() =>
+				this._services.eventBus.emit("refreshTerminal", {
+					label: "statusBar",
+					outcome: "skipped",
+					reason: "window not focused",
+				}),
 		);
 		this.reconcileFeature("statusBar");
 		this.reconcileFeature("hoverProvider");
@@ -186,8 +199,11 @@ export class ExtensionRuntime implements vscode.Disposable {
 			return;
 		}
 
-		this.usagePolling = new UsagePollingService(() =>
-			this.runInBackground("usage refresh", () => this._services.doUsageRefresh("scheduled")),
+		this.usagePolling = new UsagePollingService(
+			() =>
+				void observeRefresh({ label: "usage", eventBus: this._services.eventBus }, () =>
+					this.runInBackground("usage refresh", () => this._services.doUsageRefresh("scheduled")),
+				),
 		);
 		const usageResource = vscode.Disposable.from(
 			this.usagePolling,

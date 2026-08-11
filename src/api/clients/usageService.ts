@@ -29,7 +29,7 @@ import type { ApiLogger } from "../logger";
 import { noopApiLogger } from "../logger";
 import type { HttpClient } from "../transport/httpClient";
 import { defaultHttpClient } from "../transport/httpClient";
-import { classifyError } from "../transport/fetchHelpers";
+import { classifyError, type RequestObservation } from "../transport/fetchHelpers";
 import { OpenRouterHttpError } from "../transport/openRouterError";
 import type { DecodedResponse } from "../contractDecoders";
 import {
@@ -39,18 +39,8 @@ import {
 	DEFAULT_BASE_URL,
 	failedContractHealth,
 	endpointDiagnostic,
-	UsageTransportError,
 	type ProgressCallback,
 } from "./usageTransport";
-
-/** Callback type for progress updates during fetch operations. */
-export type { ProgressCallback };
-
-// Re-export the split usage boundaries so existing call sites and tests keep
-// importing from the original `usageService` module.
-export { fetchUsageDetails } from "./usageDetailsService";
-export { createApiKey, updateApiKey, deleteApiKey } from "./usageKeyManagement";
-export { UsageTransportError };
 
 /** Fetch usage stats. Automatically detects management keys and fetches
  * additional data (all keys, credits) when available.
@@ -67,12 +57,22 @@ export async function fetchUsageStats(
 	signal?: AbortSignal,
 	onProgress?: ProgressCallback,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<UsageStats> {
 	const urls = getUrls(trustedUsageBaseUrl(baseUrl));
 	logger.debug("UsageService: fetching usage from", urls.BASE_URL);
 
 	try {
-		return await doFetchAll(apiKey, selectedKeyHash, client, urls, logger, signal, onProgress);
+		return await doFetchAll(
+			apiKey,
+			selectedKeyHash,
+			client,
+			urls,
+			logger,
+			signal,
+			onProgress,
+			onRequestObservation,
+		);
 	} catch (err) {
 		if (err instanceof OpenRouterHttpError) {
 			err.message = err.message.replace(/^OpenRouter [^ ]+ failed/, "OpenRouter API failed");
@@ -89,6 +89,7 @@ async function doFetchAll(
 	logger: ApiLogger,
 	signal?: AbortSignal,
 	onProgress?: ProgressCallback,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<UsageStats> {
 	const endpointDiagnostics: UsageEndpointDiagnostic[] = [];
 	const successfulEndpoints = ["keys.current"];
@@ -100,7 +101,7 @@ async function doFetchAll(
 		client,
 		"keys.current",
 		undefined,
-		{ signal, logger },
+		{ signal, logger, onRequestObservation },
 	);
 	const isManagement = keyData.value.data.is_management_key === true;
 
@@ -111,8 +112,8 @@ async function doFetchAll(
 	logger.info("UsageService: management key detected, fetching all keys + credits");
 	onProgress?.("Fetching all API keys…");
 	const [keysResult, creditsResult] = await Promise.all([
-		fetchKeysList(apiKey, client, urls, signal, logger),
-		fetchAccountCredits(apiKey, client, urls, signal, logger),
+		fetchKeysList(apiKey, client, urls, signal, logger, onRequestObservation),
+		fetchAccountCredits(apiKey, client, urls, signal, logger, onRequestObservation),
 	]);
 	collectEndpointResults([keysResult, creditsResult], successfulEndpoints, endpointDiagnostics);
 	const allKeys = keysResult.data;
@@ -188,6 +189,7 @@ async function fetchKeysList(
 	urls: ReturnType<typeof getUrls>,
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<{
 	endpoint: "keys.list";
 	data: KeyUsage[] | null;
@@ -201,7 +203,7 @@ async function fetchKeysList(
 			client,
 			"keys.list",
 			undefined,
-			{ signal, logger },
+			{ signal, logger, onRequestObservation },
 		);
 		const keys = (keysRes.value.data ?? []).map(toKeyUsage);
 		logger.info("UsageService: fetched", keys.length, "API keys");
@@ -252,6 +254,7 @@ async function fetchAccountCredits(
 	urls: ReturnType<typeof getUrls>,
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<{
 	endpoint: "credits.get";
 	data: AccountCredits | null;
@@ -265,7 +268,7 @@ async function fetchAccountCredits(
 			client,
 			"credits.get",
 			undefined,
-			{ signal, logger },
+			{ signal, logger, onRequestObservation },
 		);
 		const credits = toAccountCredits(creditsRes.value.data);
 		logger.info("UsageService: fetched account credits:", credits.remaining.toFixed(2));

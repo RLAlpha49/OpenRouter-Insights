@@ -20,6 +20,7 @@ export class ModelPollingService implements vscode.Disposable {
 	constructor(
 		private readonly _onTick: () => void,
 		private readonly _config?: Pick<ReadonlyConfig, "modelPollInterval">,
+		private readonly _onSkip?: () => void,
 	) {
 		this.schedule();
 	}
@@ -43,7 +44,10 @@ export class ModelPollingService implements vscode.Disposable {
 		if (this._coalesceTimer) clearTimeout(this._coalesceTimer);
 		this._coalesceTimer = setTimeout(() => {
 			if (this._disposed) return;
-			if (!vscode.window.state.focused) return;
+			if (!vscode.window.state.focused) {
+				this._onSkip?.();
+				return;
+			}
 			this._onTick();
 		}, 1000);
 	}

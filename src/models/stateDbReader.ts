@@ -18,6 +18,7 @@ import {
 	type SnapshotSignature,
 	type SqliteReadDiagnostic,
 } from "./sqliteReader";
+import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
 import type { StateReaderLogger } from "./sqlModelParser";
 
 export type { StateReaderLogger };
@@ -75,8 +76,25 @@ export class StateDbReader {
 	private _lastResult: ResolvedActiveModel | undefined;
 	private _lastResultAt = 0;
 
+	constructor(private _diagnostics?: RuntimeDiagnostics) {}
+
 	get lastDiagnostic(): SqliteReadDiagnostic {
 		return this._lastDiagnostic;
+	}
+
+	/** Record a bounded state-DB boundary diagnostic (no model values logged). */
+	private _record(diagnostic: SqliteReadDiagnostic, fallback?: string): void {
+		this._diagnostics?.recordBoundary({
+			kind: "state-db",
+			operation: "resolve",
+			diagnostic,
+			fallback,
+		});
+	}
+
+	/** Attach a runtime diagnostics sink after construction (module singleton). */
+	setDiagnostics(diagnostics: RuntimeDiagnostics): void {
+		this._diagnostics = diagnostics;
 	}
 
 	async resolve(logger?: StateReaderLogger): Promise<StateDbResolution> {
@@ -88,6 +106,7 @@ export class StateDbReader {
 			this._lastResultAt = 0;
 			this._lastSignature = undefined;
 			log.debug("StateDbReader: state.vscdb not found, returning undefined");
+			this._record("not-found");
 			return { diagnostic: "not-found" };
 		}
 
@@ -115,6 +134,7 @@ export class StateDbReader {
 			this._lastSignature = undefined;
 			logger?.(`[StateDbReader] failed to stat state.vscdb: ${errMsg}`);
 			log.debug(`StateDbReader: failed to stat state.vscdb: ${errMsg}`);
+			this._record("unreadable");
 			return { diagnostic: "unreadable" };
 		}
 
@@ -125,6 +145,7 @@ export class StateDbReader {
 				this._lastResult = undefined;
 				this._lastResultAt = 0;
 				logger?.("[StateDbReader] state.vscdb changed during read");
+				this._record("busy");
 				return { diagnostic: "busy" };
 			}
 
@@ -139,6 +160,7 @@ export class StateDbReader {
 			if (!canContinueAfter(panelResult.diagnostic)) {
 				this._lastResult = undefined;
 				this._lastResultAt = 0;
+				this._record(panelResult.diagnostic);
 				return { diagnostic: panelResult.diagnostic };
 			}
 
@@ -149,6 +171,7 @@ export class StateDbReader {
 				if (!canContinueAfter(recentResult.diagnostic)) {
 					this._lastResult = undefined;
 					this._lastResultAt = 0;
+					this._record(recentResult.diagnostic);
 					return { diagnostic: recentResult.diagnostic };
 				}
 				recentId = parseRecentModel(recentResult.value, logger);
@@ -158,6 +181,7 @@ export class StateDbReader {
 			if (!identifier) {
 				this._lastResult = undefined;
 				this._lastResultAt = Date.now();
+				this._record(this._lastDiagnostic, "no-match");
 				return { diagnostic: this._lastDiagnostic };
 			}
 
@@ -169,6 +193,7 @@ export class StateDbReader {
 			};
 			this._lastResult = model;
 			this._lastResultAt = Date.now();
+			this._record(this._lastDiagnostic);
 			return { model, diagnostic: this._lastDiagnostic };
 		} catch (err) {
 			const errMsg = formatError(err);
@@ -177,12 +202,18 @@ export class StateDbReader {
 			this._lastResultAt = 0;
 			logger?.(`[StateDbReader] error reading state DB: ${errMsg}`);
 			log.warn(`StateDbReader: error reading state DB: ${errMsg}`);
+			this._record("corrupt");
 			return { diagnostic: "corrupt" };
 		}
 	}
 }
 
 const defaultReader = new StateDbReader();
+
+/** Attach the process-wide runtime diagnostics sink used for boundary events. */
+export function configureStateDbDiagnostics(diagnostics: RuntimeDiagnostics): void {
+	defaultReader.setDiagnostics(diagnostics);
+}
 
 export async function resolveActiveModelFromCopilotState(
 	logger?: StateReaderLogger,

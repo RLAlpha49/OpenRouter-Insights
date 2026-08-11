@@ -142,6 +142,12 @@
 				"icon": "$(info)"
 			},
 			{
+				"command": "openrouter-insights.showRuntimeDiagnostics",
+				"title": "Show Runtime Diagnostics",
+				"category": "OpenRouter Insights",
+				"icon": "$(pulse)"
+			},
+			{
 				"command": "openrouter-insights.viewModelDetail",
 				"title": "View Model Detail",
 				"category": "OpenRouter Insights",

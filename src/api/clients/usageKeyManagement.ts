@@ -17,13 +17,7 @@ import type {
 import type { HttpClient } from "../transport/httpClient";
 import { defaultHttpClient } from "../transport/httpClient";
 import { buildEndpointUrl } from "../endpoint/endpointCatalog";
-import {
-	fetchJson,
-	DEFAULT_BASE_URL,
-	validateKeyHash,
-	validateKeyRequest,
-	redactUrl,
-} from "./usageTransport";
+import { fetchJson, DEFAULT_BASE_URL, validateKeyHash, validateKeyRequest } from "./usageTransport";
 
 /**
  * Create a new API key. Requires a management key.
@@ -40,7 +34,6 @@ export async function createApiKey(
 	if (!apiKey.trim()) throw new Error("Management API key cannot be empty");
 	validateKeyRequest(req);
 	const url = buildEndpointUrl(baseUrl, "keys.create");
-	fetchJson;
 	const res = await fetchJson<CreateKeyResponse>(url, apiKey, client, "keys.create", {
 		name: req.name,
 		limit: req.limit,
@@ -109,7 +102,3 @@ export async function deleteApiKey(
 		hash,
 	};
 }
-
-// Re-export so callers and tests that referenced the old debug logging path
-// keep working; the noop logger is used for redacted URL diagnostics.
-export { redactUrl };

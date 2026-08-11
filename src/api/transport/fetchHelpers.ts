@@ -16,6 +16,26 @@ export interface FetchError {
 	errorClass?: OpenRouterErrorClass;
 }
 
+/** Final outcome reported for a completed request observation. */
+export type RequestOutcome =
+	| "success"
+	| "rate-limited"
+	| "server-error"
+	| "transport-error"
+	| "auth-error"
+	| "client-error"
+	| "malformed-response"
+	| "cancelled";
+
+/** Bounded dimensions for one request lifecycle, for runtime diagnostics. */
+export interface RequestObservation {
+	endpoint: string;
+	durationMs: number;
+	outcome: RequestOutcome;
+	retries: number;
+	cancelled: boolean;
+}
+
 /** Map a structured error class to its retry category. */
 export function toFetchKind(errorClass: OpenRouterErrorClass): "transient" | "permanent" {
 	switch (errorClass) {
@@ -168,6 +188,11 @@ export interface FetchWithRetryOptions {
 	baseDelayMs?: number;
 	/** Called on each failed attempt with the error annotation. */
 	onAttempt?: (_attempt: number, _error: FetchError) => void;
+	/**
+	 * Called once when the full retry lifecycle completes (success or final
+	 * failure). Carries bounded latency and outcome dimensions for diagnostics.
+	 */
+	onRequestObservation?: (_observation: RequestObservation) => void;
 	/** Optional error classifier override. Defaults to classifyError. */
 	classify?: (_err: unknown) => FetchError;
 	/** Injectable clock for deterministic retry timing. */
@@ -176,6 +201,8 @@ export interface FetchWithRetryOptions {
 	isAborted?: () => boolean;
 	/** Caller-owned cancellation signal for the complete retry lifecycle. */
 	signal?: AbortSignal;
+	/** Endpoint label for the request observation (diagnostics only). */
+	endpoint?: string;
 }
 
 /** Create a timeout controller that also follows a caller-owned signal. */
@@ -277,15 +304,29 @@ export async function fetchWithRetry<T>(
 	const baseDelayMs = options.baseDelayMs ?? 1000;
 	const classify = options.classify ?? classifyError;
 	const clock = options.clock ?? systemClock;
+	const startedAt = clock.now();
 
 	let lastError: FetchError | undefined;
 	let lastRawError: unknown;
+	let attempts = 0;
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
-		if (isCancelled(options)) throw cancelledError();
+		attempts = attempt;
+		if (isCancelled(options)) break;
 		const attemptResult = await runAttempt(fn, classify);
-		if (!attemptResult.error) return attemptResult.value as T;
-		if (isCancelled(options)) throw cancelledError();
+		if (!attemptResult.error) {
+			if (options.onRequestObservation) {
+				options.onRequestObservation({
+					endpoint: options.endpoint ?? "unknown",
+					durationMs: clock.now() - startedAt,
+					outcome: "success",
+					retries: attempt - 1,
+					cancelled: false,
+				});
+			}
+			return attemptResult.value as T;
+		}
+		if (isCancelled(options)) break;
 		lastError = attemptResult.error;
 		lastRawError = attemptResult.rawError;
 		options.onAttempt?.(attempt, lastError);
@@ -294,9 +335,21 @@ export async function fetchWithRetry<T>(
 		await waitBeforeRetry(clock, delay, options.signal);
 	}
 
+	const durationMs = clock.now() - startedAt;
+	const cancelled = isCancelled(options);
+	const outcome = outcomeForError(lastError, cancelled);
+	options.onRequestObservation?.({
+		endpoint: options.endpoint ?? "unknown",
+		durationMs,
+		outcome,
+		retries: attempts - 1,
+		cancelled,
+	});
+
 	const detail = lastError?.message ?? "unknown error";
 	// Preserve the original structured error when available so the envelope
 	// (error.type / error.message) survives the retry loop.
+	if (cancelled) throw cancelledError();
 	if (lastRawError instanceof OpenRouterHttpError) {
 		throw lastRawError;
 	}
@@ -313,6 +366,31 @@ export async function fetchWithRetry<T>(
 					: ""),
 		},
 	});
+}
+
+/** Map a final terminal error (or cancellation) to a bounded outcome dimension. */
+function outcomeForError(error: FetchError | undefined, cancelled: boolean): RequestOutcome {
+	if (cancelled) return "cancelled";
+	if (!error) return "transport-error";
+	switch (error.errorClass) {
+		case "rate-limit":
+			return "rate-limited";
+		case "server":
+			return "server-error";
+		case "transport":
+			return "transport-error";
+		case "auth":
+			return "auth-error";
+		case "permission":
+		case "insufficient-credit":
+		case "not-found":
+		case "client":
+			return "client-error";
+		case "malformed-response":
+			return "malformed-response";
+		default:
+			return error.kind === "transient" ? "transport-error" : "client-error";
+	}
 }
 
 /** Return a ratio in [0, 1) using crypto-quality randomness. */

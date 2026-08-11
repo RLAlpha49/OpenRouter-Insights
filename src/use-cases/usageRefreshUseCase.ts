@@ -14,7 +14,7 @@ import type { IUsageStore } from "../api/cache/usageStore";
 import type { SecretStorageService } from "../api/secretStorageService";
 import type { UsageStatusBarView } from "../ui/status/usageStatusBarView";
 import type { UsageDashboardProvider } from "../ui/webviews/usageDashboard";
-import { fetchUsageDetails, fetchUsageStats } from "../api/clients/usageService";
+import { fetchUsageStats } from "../api/clients/usageService";
 import { log, formatError, formatErrorBrief } from "../infrastructure/logger";
 import type { ReadonlyConfig } from "../infrastructure/config";
 import type { RefreshContext } from "../infrastructure/refreshContext";
@@ -23,6 +23,8 @@ import type { EventBus } from "../infrastructure/eventBus";
 import type { ApiLogger } from "../api/logger";
 import type { UsageStats } from "../types-usage";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
+import type { RequestObservation } from "../api/transport/fetchHelpers";
+import { fetchUsageDetails } from "../api/clients/usageDetailsService";
 
 export class UsageRefreshUseCase {
 	private _pending: Promise<void> | undefined;
@@ -52,6 +54,10 @@ export class UsageRefreshUseCase {
 
 	get isInProgress(): boolean {
 		return this._pending !== undefined;
+	}
+
+	private _observe(): ((_observation: RequestObservation) => void) | undefined {
+		return this._diagnostics ? (o) => this._diagnostics?.recordRequestObservation(o) : undefined;
 	}
 
 	/**
@@ -119,6 +125,7 @@ export class UsageRefreshUseCase {
 				ctx?.signal,
 				(message) => this._sendProgress(message),
 				...(this._logger ? [this._logger] : []),
+				...(this._observe() ? [this._observe()!] : []),
 			);
 			if (ctx?.isCancelled()) {
 				log.info("UsageRefreshUseCase: superseded before publish, discarding result");
@@ -261,6 +268,7 @@ export class UsageRefreshUseCase {
 				ctx?.signal,
 				(message) => this._sendProgress(message),
 				...(this._logger ? [this._logger] : []),
+				...(this._observe() ? [this._observe()!] : []),
 			);
 			if (ctx?.isCancelled() || generation !== this._generation) return;
 			if (!(await this._secrets.get())) return;

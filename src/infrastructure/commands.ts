@@ -471,6 +471,7 @@ function quickActionRank(commandId: string): number {
 		"openrouter-insights.showLogs": 90,
 		"openrouter-insights.clearCache": 91,
 		"openrouter-insights.showCacheInfo": 92,
+		"openrouter-insights.showRuntimeDiagnostics": 93,
 	};
 	return ranks[commandId] ?? 100;
 }
@@ -555,5 +556,35 @@ export class ShowCacheInfoCommand implements ICommand {
 			`OpenRouter Insights: ${info.modelCount} models cached (${info.age})`,
 			{ modal: true, detail },
 		);
+	}
+}
+
+export class ShowRuntimeDiagnosticsCommand implements ICommand {
+	readonly id = "openrouter-insights.showRuntimeDiagnostics";
+	readonly argAdapter = adaptNoArgs;
+	readonly quickAction = {
+		label: "$(pulse) Runtime Diagnostics",
+		description: "Show support diagnostics snapshot",
+	};
+	constructor(private readonly _diagnostics: RuntimeDiagnostics) {}
+	async execute(): Promise<void> {
+		const report = this._diagnostics.report();
+		const items: { label: string; action: string }[] = [
+			{ label: "$(copy) Copy diagnostics report", action: "copy" },
+		];
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: "Runtime Diagnostics (bounded, redacted — no secrets or payloads)",
+			title: "OpenRouter Insights",
+		});
+		if (pick?.action === "copy") {
+			await vscode.env.clipboard.writeText(report);
+			void vscode.window.showInformationMessage(
+				"Diagnostics report copied to clipboard. Share it with support — it contains no secrets.",
+			);
+			return;
+		}
+		// Fall back to the output channel so the full report is always reachable.
+		show();
+		log.info("Runtime diagnostics report:\n" + report);
 	}
 }

@@ -22,6 +22,7 @@ import { noopApiLogger, type ApiLogger } from "../logger";
 import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
 import { classifyError, fetchWithRetry } from "../transport/fetchHelpers";
 import { OpenRouterHttpError, type OpenRouterErrorClass } from "../transport/openRouterError";
+import type { RuntimeDiagnostics } from "../../infrastructure/runtimeDiagnostics";
 import { redactUrl } from "../redaction";
 import { mergeContractHealth } from "../contractDecoders";
 import { buildEndpointUrl, getEndpointRetryPolicy } from "../endpoint/endpointCatalog";
@@ -135,6 +136,7 @@ function validateNextPageUrl(
  */
 export class PricingFetcher {
 	private readonly _logger: ApiLogger;
+	private readonly _diagnostics?: RuntimeDiagnostics;
 	private consecutiveFailures = 0;
 	private lastSuccessEpoch = 0;
 	private lastFailureEpoch = 0;
@@ -143,8 +145,9 @@ export class PricingFetcher {
 		{ etag?: string; response: OpenRouterModelsResponseBody; health: ContractHealth }
 	>();
 
-	constructor(logger: ApiLogger = noopApiLogger) {
+	constructor(logger: ApiLogger = noopApiLogger, diagnostics?: RuntimeDiagnostics) {
 		this._logger = logger;
+		this._diagnostics = diagnostics;
 	}
 
 	/** Return a snapshot of the current pricing circuit state. */
@@ -293,11 +296,15 @@ export class PricingFetcher {
 					maxRetries: RETRY_MAX,
 					baseDelayMs: RETRY_BASE_MS,
 					signal,
+					endpoint: "models.list",
 					onAttempt: (attempt, err) => {
 						this._logger.warn(
 							`Fetch attempt ${attempt}/${RETRY_MAX} failed (${err.kind}, HTTP ${err.code}):`,
 							err.message,
 						);
+					},
+					onRequestObservation: (observation) => {
+						this._diagnostics?.recordRequestObservation(observation);
 					},
 				},
 			);

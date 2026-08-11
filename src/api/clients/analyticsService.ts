@@ -18,6 +18,7 @@ import type { ApiLogger } from "../logger";
 import { noopApiLogger } from "../logger";
 import { type HttpClient, defaultHttpClient } from "../transport/httpClient";
 import { classifyError } from "../transport/fetchHelpers";
+import type { RequestObservation } from "../transport/fetchHelpers";
 import type { DecodedAnalyticsResponse } from "../contractDecoders";
 import { EndpointClient } from "../transport/endpointClient";
 
@@ -114,6 +115,7 @@ export async function fetchModelSpendBreakdown(
 	baseUrl: string = DEFAULT_BASE_URL,
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<AnalyticsResult> {
 	validateAnalyticsRequest(apiKey, daysBack);
 	const key = analyticsRequestKey(apiKey, daysBack, client, baseUrl);
@@ -133,6 +135,7 @@ export async function fetchModelSpendBreakdown(
 		baseUrl,
 		signal,
 		logger,
+		onRequestObservation,
 	);
 	analyticsInFlight.set(key, request);
 	void request
@@ -157,6 +160,7 @@ async function fetchModelSpendBreakdownUncached(
 	baseUrl: string,
 	signal?: AbortSignal,
 	logger: ApiLogger = noopApiLogger,
+	onRequestObservation?: (_observation: RequestObservation) => void,
 ): Promise<AnalyticsResult> {
 	const endDate = new Date();
 	const startDate = new Date(endDate);
@@ -193,6 +197,7 @@ async function fetchModelSpendBreakdownUncached(
 		const result = await endpointClient.request("analytics.query", {
 			baseUrl,
 			signal,
+			onRequestObservation,
 			init: { body: JSON.stringify(body) },
 		});
 		if (!result) throw new Error("Analytics endpoint returned 304 without a cached response");

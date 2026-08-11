@@ -132,4 +132,27 @@ describe("state database reader", () => {
 
 		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "wal-incomplete" });
 	});
+
+	it("records a bounded state-db boundary diagnostic when a sink is attached", async () => {
+		const { configureStateDbDiagnostics } = await import("../../models/stateDbReader");
+		const { RuntimeDiagnostics } = await import("../../infrastructure/runtimeDiagnostics");
+		const diagnostics = new RuntimeDiagnostics();
+		configureStateDbDiagnostics(diagnostics);
+
+		const dbPath = path.join(process.cwd(), "state.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockImplementation(() => {
+			throw new Error("database unavailable");
+		});
+
+		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "unreadable" });
+
+		const boundary = diagnostics.snapshot().boundary;
+		expect(boundary.length).toBeGreaterThanOrEqual(1);
+		expect(boundary[boundary.length - 1]).toMatchObject({
+			kind: "state-db",
+			operation: "resolve",
+			diagnostic: "unreadable",
+		});
+	});
 });

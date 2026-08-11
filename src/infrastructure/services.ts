@@ -46,6 +46,7 @@ import {
 	ShowCacheInfoCommand,
 	ViewModelDetailCommand,
 	ClearSelectedModelCommand,
+	ShowRuntimeDiagnosticsCommand,
 } from "./commands";
 import {
 	SetApiKeyCommand,
@@ -68,6 +69,7 @@ import { PricingFetcher } from "../api/clients/pricingService";
 import { defaultHttpClient } from "../api/transport/httpClient";
 import { HttpPipeline, withEndpointPolicy, withLogging } from "../api/transport/httpPipeline";
 import { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { configureStateDbDiagnostics } from "../models/stateDbReader";
 import { setCredentialGeneration, clearAnalyticsCache } from "../api/clients/analyticsService";
 
 export interface RuntimeServices {
@@ -121,6 +123,7 @@ export interface ServiceContainer extends RuntimeServices, CommandServices, vsco
 export function createServices(context: ExtensionContext): ServiceContainer {
 	const diagnostics = new RuntimeDiagnostics();
 	const cache = new PricingCache(context, ConfigService.instance, diagnostics);
+	configureStateDbDiagnostics(diagnostics);
 	const usageCache = new UsageCache();
 	const secrets = new SecretStorageService(context);
 	const authenticatedHttpPipeline = new HttpPipeline(
@@ -141,7 +144,7 @@ export function createServices(context: ExtensionContext): ServiceContainer {
 	const refreshUseCase = new RefreshUseCase(
 		cache,
 		ConfigService.instance,
-		new PricingFetcher(log),
+		new PricingFetcher(log, diagnostics),
 		authenticatedHttpPipeline,
 		eventBus,
 		diagnostics,
@@ -230,6 +233,7 @@ export function createServices(context: ExtensionContext): ServiceContainer {
 	);
 	addCmd(new ClearCacheCommand(cache));
 	addCmd(new ShowCacheInfoCommand(cache, diagnostics));
+	addCmd(new ShowRuntimeDiagnosticsCommand(diagnostics));
 	addCmd(new ViewModelDetailCommand(cache, modelPicker));
 	addCmd(new ClearSelectedModelCommand());
 

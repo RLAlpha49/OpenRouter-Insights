@@ -17,9 +17,9 @@ import { noopApiLogger } from "../logger";
 import { type HttpClient } from "../transport/httpClient";
 import { classifyError } from "../transport/fetchHelpers";
 import { OpenRouterHttpError } from "../transport/openRouterError";
-import { redactUrl } from "../redaction";
 import { buildEndpointUrl } from "../endpoint/endpointCatalog";
 import { EndpointClient } from "../transport/endpointClient";
+import type { RequestObservation } from "../transport/fetchHelpers";
 import type { DecodedResponse } from "../contractDecoders";
 import type { ContractHealth } from "../../types";
 import type { EndpointId } from "../endpoint/endpointCatalog";
@@ -112,7 +112,11 @@ export async function fetchJson<T>(
 	client: HttpClient,
 	endpointId: EndpointId,
 	body?: Record<string, unknown>,
-	options: { signal?: AbortSignal; logger?: ApiLogger } = {},
+	options: {
+		signal?: AbortSignal;
+		logger?: ApiLogger;
+		onRequestObservation?: (_observation: RequestObservation) => void;
+	} = {},
 ): Promise<DecodedResponse<T>> {
 	const logger = options.logger ?? noopApiLogger;
 	logger.debug(`UsageService: ${endpointId}`);
@@ -124,6 +128,7 @@ export async function fetchJson<T>(
 		return (await endpointClient.request(endpointId, {
 			url,
 			signal: options.signal,
+			onRequestObservation: options.onRequestObservation,
 			init: body ? { body: JSON.stringify(body) } : undefined,
 		})) as DecodedResponse<T>;
 	} catch (err) {
@@ -131,5 +136,3 @@ export async function fetchJson<T>(
 		throw new UsageTransportError(endpointId, err);
 	}
 }
-
-export { redactUrl };

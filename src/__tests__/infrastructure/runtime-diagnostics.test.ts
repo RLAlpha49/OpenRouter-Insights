@@ -15,7 +15,11 @@ describe("RuntimeDiagnostics", () => {
 		diagnostics.recordFailure("background", "third failure");
 
 		expect(diagnostics.snapshot()).toEqual({
-			requests: { total: 1, byEndpoint: { "https://openrouter.ai/api/v1/models": 1 } },
+			requests: {
+				total: 1,
+				byEndpoint: { "https://openrouter.ai/api/v1/models": 1 },
+				observations: [],
+			},
 			cache: { hits: 1, misses: 1, writes: 0 },
 			refresh: { started: 1, completed: 1, failed: 0, deduplicated: 0 },
 			failures: { command: 1, config: 1, background: 1, activation: 0 },
@@ -23,6 +27,7 @@ describe("RuntimeDiagnostics", () => {
 				{ kind: "config", message: "second failure" },
 				{ kind: "background", message: "third failure" },
 			],
+			boundary: [],
 		});
 	});
 
@@ -40,5 +45,85 @@ describe("RuntimeDiagnostics", () => {
 		).resolves.toEqual(["ok", "ok"]);
 		expect(executions).toBe(1);
 		expect(diagnostics.snapshot().refresh.deduplicated).toBe(1);
+	});
+
+	it("records bounded request observations with outcome dimensions and drops query strings", () => {
+		const diagnostics = new RuntimeDiagnostics({ maxObservations: 2 });
+		diagnostics.recordRequestObservation({
+			endpoint: "https://openrouter.ai/api/v1/models?api_key=secret",
+			durationMs: 1234,
+			outcome: "success",
+			retries: 2,
+			cancelled: false,
+		});
+		diagnostics.recordRequestObservation({
+			endpoint: "keys.current",
+			durationMs: 50,
+			outcome: "rate-limited",
+			retries: 3,
+			cancelled: false,
+		});
+		// A third observation past the cap evicts the oldest (models.list).
+		diagnostics.recordRequestObservation({
+			endpoint: "analytics.query",
+			durationMs: 9,
+			outcome: "success",
+			retries: 0,
+			cancelled: false,
+		});
+
+		const snap = diagnostics.snapshot();
+		expect(snap.requests.observations).toHaveLength(2);
+		// Oldest (models.list) was evicted past the cap; newest two remain.
+		expect(snap.requests.observations[0].endpoint).toBe("keys.current");
+		expect(snap.requests.observations[0]).toMatchObject({
+			durationMs: 50,
+			outcome: "rate-limited",
+			retries: 3,
+		});
+		expect(snap.requests.observations[1].endpoint).toBe("analytics.query");
+	});
+
+	it("records bounded boundary diagnostics and keeps them redacted", () => {
+		const diagnostics = new RuntimeDiagnostics({ maxBoundary: 2 });
+		diagnostics.recordBoundary({ kind: "state-db", operation: "resolve", diagnostic: "busy" });
+		diagnostics.recordBoundary({
+			kind: "cache",
+			operation: "set",
+			diagnostic: "rejected",
+			sizeBucket: "2.4MB",
+			fallback: "preserved-previous",
+		});
+		diagnostics.recordBoundary({
+			kind: "cache",
+			operation: "validate",
+			diagnostic: "no-valid-entries",
+			fallback: "discarded",
+		});
+
+		const boundary = diagnostics.snapshot().boundary;
+		expect(boundary).toHaveLength(2);
+		expect(boundary[0]).toMatchObject({
+			kind: "cache",
+			operation: "set",
+			diagnostic: "rejected",
+			sizeBucket: "2.4MB",
+			fallback: "preserved-previous",
+		});
+	});
+
+	it("renders a redacted support report without secrets", () => {
+		const diagnostics = new RuntimeDiagnostics();
+		diagnostics.recordRequest("models.list");
+		diagnostics.recordCacheWrite();
+		diagnostics.recordFailure("command", "Bearer sk-or-v1-secret-token");
+		diagnostics.recordBoundary({ kind: "cache", operation: "set", diagnostic: "written" });
+
+		const report = diagnostics.report();
+		expect(report).toContain("Runtime Diagnostics");
+		expect(report).toContain("models.list");
+		// Secrets are redacted out of the report entirely.
+		expect(report).not.toContain("secret-token");
+		expect(report).not.toContain("sk-or-v1");
 	});
 });

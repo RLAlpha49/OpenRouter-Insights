@@ -15,6 +15,7 @@ import { createAbortController, fetchWithRetry } from "./fetchHelpers";
 import type { HttpClient, HttpRequestInit } from "./httpClient";
 import { fetchEndpoint, type EndpointCredentialProviders } from "./httpPipeline";
 import { OpenRouterHttpError, parseOpenRouterErrorEnvelope } from "./openRouterError";
+import type { RequestObservation } from "./fetchHelpers";
 
 export interface EndpointRequestOptions {
 	baseUrl?: string;
@@ -22,6 +23,8 @@ export interface EndpointRequestOptions {
 	signal?: AbortSignal;
 	allowNotModified?: boolean;
 	retry?: { maxRetries: number; baseDelayMs: number };
+	/** Optional diagnostics callback for a completed request observation. */
+	onRequestObservation?: (_observation: RequestObservation) => void;
 	init?: Omit<HttpRequestInit, "method" | "endpointId" | "signal">;
 }
 
@@ -107,7 +110,12 @@ export class EndpointClient {
 						responseHeaders: response.headers,
 					};
 				},
-				{ ...policy, signal: options.signal },
+				{
+					...policy,
+					signal: options.signal,
+					endpoint: String(endpoint),
+					onRequestObservation: options.onRequestObservation,
+				},
 			);
 		} finally {
 			dispose();

@@ -34,6 +34,14 @@ export interface EventMap {
 		refreshId?: number;
 		durationMs?: number;
 	};
+	/** Consistent terminal event for any scheduled or manual refresh operation. */
+	refreshTerminal: {
+		label: string;
+		outcome: "started" | "completed" | "failed" | "skipped" | "cancelled";
+		reason?: string;
+		refreshId?: number;
+		durationMs?: number;
+	};
 }
 
 export type EventName = keyof EventMap;

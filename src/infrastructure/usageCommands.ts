@@ -10,11 +10,11 @@ import { type ICommand, adaptKeyHash, adaptNoArgs, adaptOptionalScalar } from ".
 import type { SecretStorageService } from "../api/secretStorageService";
 import type { IUsageStore } from "../api/cache/usageStore";
 import { UsageRefreshUseCase } from "../use-cases/usageRefreshUseCase";
-import { createApiKey, updateApiKey, deleteApiKey } from "../api/clients/usageService";
 import { formatErrorBrief } from "../infrastructure/logger";
 import { maskKeyLabel } from "../api/redaction";
 import type { KeyManagementResult } from "../types-usage";
 import type { HttpClient } from "../api/transport/httpClient";
+import { createApiKey, deleteApiKey, updateApiKey } from "../api/clients/usageKeyManagement";
 
 export class SetApiKeyCommand implements ICommand {
 	readonly id = "openrouter-insights.setApiKey";

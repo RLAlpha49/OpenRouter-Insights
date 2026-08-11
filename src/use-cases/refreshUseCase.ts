@@ -20,7 +20,7 @@ export class RefreshUseCase {
 	constructor(
 		private readonly _cache: IPricingStore,
 		private readonly _config: ReadonlyConfig,
-		private readonly _fetcher = new PricingFetcher(),
+		private readonly _fetcher = new PricingFetcher(log, this._diagnostics),
 		private readonly _client?: HttpClient,
 		private readonly _eventBus?: EventBus,
 		private readonly _diagnostics?: RuntimeDiagnostics,
