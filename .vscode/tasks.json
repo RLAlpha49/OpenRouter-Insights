@@ -47,6 +47,13 @@
 		},
 		{
 			"type": "npm",
+			"script": "format",
+			"problemMatcher": [],
+			"label": "npm: format",
+			"detail": "prettier --write src/**/*.ts"
+		},
+		{
+			"type": "npm",
 			"script": "format:check",
 			"problemMatcher": [],
 			"label": "npm: format:check",
