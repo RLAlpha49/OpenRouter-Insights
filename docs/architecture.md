@@ -7,7 +7,7 @@ OpenRouter Insights is a VS Code extension that combines two workflows:
 1. It resolves the active Copilot model, loads public OpenRouter pricing, and presents an estimated cost in the status bar and model-selection surfaces.
 2. It optionally authenticates to OpenRouter to display account credits, usage, budgets, activity, analytics, and managed API-key data.
 
-`src/extension.ts` is the activation entry point. The service composition in `src/infrastructure/services.ts` creates the runtime dependencies, and `ExtensionRuntime` owns activation-scoped registrations and disposal.
+`src/extension.ts` is the activation entry point. `ExtensionActivation` (`src/infrastructure/activation.ts`) owns the composed service graph and the runtime, registers once in `context.subscriptions`, and exposes an idempotent `dispose` used by `deactivate`. The composition in `src/infrastructure/services.ts` is split into focused factories (`createApiServices`, `createPricingServices`, `createUsageServices`, `createCommandServices`) and returns an immutable `ServiceContainer`. Use cases publish host-agnostic outcomes through output ports in `src/use-cases/ports.ts`; concrete VS Code views and `show*Message` calls live in `src/infrastructure/hostNotifications.ts` and the UI adapters. `ExtensionRuntime` owns activation-scoped registrations and disposal through a single `FeatureReconciler`.
 
 ## Component diagram
 
@@ -63,6 +63,30 @@ The usage dashboard is contributed as the `openrouter-insights.usageDashboard` w
 5. Deactivation disposes the runtime-owned timers, watchers, webviews, commands, subscriptions, status bars, and API resources.
 
 All resources are activation-scoped. Runtime disposal is the boundary that prevents timers, file watchers, webview messages, and in-flight UI updates from outliving the extension host.
+
+## Composition root and host adapter boundaries
+
+Activation produces one `ExtensionActivation` handle that holds the immutable
+`ServiceContainer` and the `ExtensionRuntime`. `ServiceContainer.dispose` releases
+the refresh coordinator, views, secrets, scheduler, runtime, and configuration in
+reverse creation order; `ExtensionRuntime.dispose` releases activation-scoped
+timers, watchers, registrations, and the `FeatureReconciler`. Disposal is ordered
+and idempotent, so the subscription path and an explicit `deactivate` call share
+one resource-ownership contract.
+
+Application use cases depend only on output ports (`src/use-cases/ports.ts`):
+`StatusNotifier`, `PricingRefreshPresenter`, `StatusBarPresenter`,
+`ModelSelectionCache`, `UsageStatusPresenter`, and `UsageDashboardPresenter`. The
+host adapters in `src/infrastructure/hostNotifications.ts` and `src/ui/` implement
+those ports, so VS Code presentation and notification policy stay replaceable and
+use cases stay host-independent and unit-testable.
+
+Feature lifecycle is table-driven through `FeatureReconciler`
+(`src/infrastructure/featureReconciler.ts`). Each feature declares an enabled
+predicate, an optional resource factory, a configuration `sync` step, and
+enable/disable behavior; `ExtensionRuntime` calls one reconciliation entry point
+for configuration and feature events, while `FeatureRegistry` remains the
+command-registration gate.
 
 ## Pricing data flow
 
