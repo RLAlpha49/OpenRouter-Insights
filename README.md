@@ -115,6 +115,7 @@ See [Detailed privacy and security](#detailed-privacy-and-security) for network,
 | **Quick Actions**             | Open the command quick-actions menu.    |
 | **Export Pricing as CSV**     | Save the pricing dataset as CSV.        |
 | **Export Pricing as JSON**    | Save the pricing dataset as JSON.       |
+| **Show Runtime Diagnostics**  | Copy a redacted diagnostics report.     |
 
 ### Usage and account commands
 
