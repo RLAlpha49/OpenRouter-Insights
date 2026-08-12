@@ -7,11 +7,7 @@
  * @see https://openrouter.ai/docs/api/api-reference
  */
 
-import type {
-	UsageEndpointDiagnostic,
-	CreateKeyRequest,
-	UpdateKeyRequest,
-} from "../../types-usage";
+import type { UsageEndpointDiagnostic } from "../../types-usage";
 import type { ApiLogger } from "../logger";
 import { noopApiLogger } from "../logger";
 import { type HttpClient } from "../transport/httpClient";
@@ -40,26 +36,6 @@ export function getUrls(baseUrl: string = DEFAULT_BASE_URL) {
 }
 
 const TRUSTED_USAGE_ORIGIN = "https://openrouter.ai";
-
-export function validateKeyHash(hash: string): void {
-	if (!/^[A-Za-z0-9_-]{3,256}$/.test(hash)) throw new Error("Invalid API key hash");
-}
-
-export function validateKeyRequest(req: CreateKeyRequest | UpdateKeyRequest): void {
-	if ("name" in req && req.name !== undefined && (!req.name.trim() || req.name.length > 256)) {
-		throw new Error("API key name must be between 1 and 256 characters");
-	}
-	if (req.limit !== undefined && (!Number.isFinite(req.limit) || req.limit < 0)) {
-		throw new Error("API key limit must be a finite non-negative number");
-	}
-	const expiration = "days_until_expiration" in req ? req.days_until_expiration : undefined;
-	if (
-		expiration !== undefined &&
-		(!Number.isInteger(expiration) || expiration < 1 || expiration > 3650)
-	) {
-		throw new Error("API key expiration must be between 1 and 3650 days");
-	}
-}
 
 export function trustedUsageBaseUrl(_baseUrl: string): string {
 	try {
@@ -129,7 +105,14 @@ export async function fetchJson<T>(
 			url,
 			signal: options.signal,
 			onRequestObservation: options.onRequestObservation,
-			init: body ? { body: JSON.stringify(body) } : undefined,
+			input:
+				endpointId === "analytics.query"
+					? {
+							start: String(body?.start),
+							end: String(body?.end),
+							limit: Number(body?.limit),
+						}
+					: undefined,
 		})) as DecodedResponse<T>;
 	} catch (err) {
 		if (err instanceof OpenRouterHttpError) throw err;

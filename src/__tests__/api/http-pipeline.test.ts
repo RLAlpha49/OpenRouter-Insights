@@ -6,7 +6,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
 	HttpPipeline,
-	fetchEndpoint,
 	withAuth,
 	withDefaultHeaders,
 	withEndpointPolicy,
@@ -191,39 +190,6 @@ describe("withEndpointPolicy", () => {
 		expect(requests[0].init).not.toHaveProperty("endpointId");
 		// Requests without endpoint metadata keep the caller's own headers.
 		expect(new Headers(requests[1].init?.headers).get("authorization")).toBe("Bearer caller-owned");
-	});
-});
-
-describe("fetchEndpoint", () => {
-	it("applies the catalog method and strips endpoint metadata before the base client", async () => {
-		const { client, requests } = recordingClient(() => new Response("{}", { status: 200 }));
-
-		await fetchEndpoint(client, "https://openrouter.ai/api/v1/keys", "keys.create", {
-			method: "GET",
-			body: JSON.stringify({ name: "New key" }),
-		});
-
-		expect(requests[0].init?.method).toBe("POST");
-		expect(requests[0].init).not.toHaveProperty("endpointId");
-	});
-
-	it("applies credential providers when they are supplied", async () => {
-		const { client, requests } = recordingClient(() => new Response("{}", { status: 200 }));
-
-		await fetchEndpoint(
-			client,
-			"https://openrouter.ai/api/v1/credits",
-			"credits.get",
-			{},
-			{
-				apiKeyProvider: async () => "sk-or-v1-api-key-12345678901234567890",
-				managementKeyProvider: async () => "sk-or-v1-management-key-12345678901234567890",
-			},
-		);
-
-		expect(new Headers(requests[0].init?.headers).get("authorization")).toBe(
-			"Bearer sk-or-v1-management-key-12345678901234567890",
-		);
 	});
 });
 

@@ -13,7 +13,7 @@
 /** Matches an OpenRouter API key anywhere in a string. */
 const BEARER_PATTERN = /sk-or-v1-[A-Za-z0-9_-]+/g;
 /** Matches a bearer Authorization header value. */
-const AUTH_HEADER_PATTERN = /(Bearer\s+)(sk-or-v1-[\w-]+)/gi;
+const AUTH_HEADER_PATTERN = /(Bearer\s+)(?!…REDACTED\b)([^\s"',\]}]+)/gi;
 /** Matches any sk-…-shaped token (defense in depth for legacy formats). */
 const GENERIC_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}/g;
 
@@ -51,11 +51,13 @@ export function redactUrl(url: string): string {
 			"authorization",
 			"signature",
 		]) {
-			if (parsed.searchParams.has(key)) {
-				parsed.searchParams.set(key, "…REDACTED");
+			for (const actualKey of parsed.searchParams.keys()) {
+				if (actualKey.toLowerCase() === key) {
+					parsed.searchParams.set(actualKey, "…REDACTED");
+				}
 			}
 		}
-		return parsed.toString();
+		return redact(decodeURI(parsed.toString()));
 	} catch {
 		// Not a valid URL — strip anything that looks like a key.
 		return redact(url);

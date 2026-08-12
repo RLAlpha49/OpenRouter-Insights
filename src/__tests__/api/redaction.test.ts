@@ -44,6 +44,11 @@ describe("redact", () => {
 		expect(redact(legacy)).not.toContain("sk-abcdefghijklmnop");
 	});
 
+	it("redacts opaque bearer credentials", () => {
+		const out = redact("Authorization: Bearer opaque-secret-value");
+		expect(out).toBe("Authorization: Bearer …REDACTED");
+	});
+
 	it("is idempotent", () => {
 		const text = `Authorization: Bearer ${SAMPLE_KEY}`;
 		const once = redact(text);
@@ -78,6 +83,23 @@ describe("redactUrl", () => {
 		expect(out).not.toContain("hash-abc123");
 		expect(out).not.toContain("token-value");
 		expect(out).toContain("api_key_hash=");
+	});
+
+	it("redacts secret-shaped values in unknown query parameters", () => {
+		const out = redactUrl(`https://openrouter.ai/api/v1/models?custom=${SAMPLE_KEY}`);
+		expect(out).not.toContain(SAMPLE_KEY);
+		expect(out).toContain("custom=");
+	});
+
+	it("matches sensitive query names case-insensitively", () => {
+		const out = redactUrl("https://openrouter.ai/api/v1/models?Api-Key=secret-value");
+		expect(out).not.toContain("secret-value");
+	});
+
+	it("redacts secret-shaped values in URL paths and remains idempotent", () => {
+		const out = redactUrl(`https://openrouter.ai/keys/${SAMPLE_KEY}`);
+		expect(out).not.toContain(SAMPLE_KEY);
+		expect(redactUrl(out)).toBe(out);
 	});
 
 	it("falls back to plain redaction for invalid URLs", () => {

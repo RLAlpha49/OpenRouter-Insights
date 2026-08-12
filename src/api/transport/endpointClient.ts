@@ -6,18 +6,24 @@ import {
 } from "../contractDecoders";
 import {
 	buildEndpointUrl,
+	buildEndpointRequest,
 	getEndpointContract,
 	getEndpointRetryPolicy,
 	type EndpointId,
+	type EndpointRequestMap,
 } from "../endpoint/endpointCatalog";
 import { redactBodySnippet } from "../redaction";
 import { createAbortController, fetchWithRetry } from "./fetchHelpers";
 import type { HttpClient, HttpRequestInit } from "./httpClient";
-import { fetchEndpoint, type EndpointCredentialProviders } from "./httpPipeline";
+import {
+	applyEndpointPolicy,
+	type EndpointCredentialProviders,
+	type EndpointRequestWithMetadata,
+} from "./endpointPolicy";
 import { OpenRouterHttpError, parseOpenRouterErrorEnvelope } from "./openRouterError";
 import type { RequestObservation } from "./fetchHelpers";
 
-export interface EndpointRequestOptions {
+interface CommonEndpointRequestOptions {
 	baseUrl?: string;
 	url?: string;
 	signal?: AbortSignal;
@@ -25,8 +31,14 @@ export interface EndpointRequestOptions {
 	retry?: { maxRetries: number; baseDelayMs: number };
 	/** Optional diagnostics callback for a completed request observation. */
 	onRequestObservation?: (_observation: RequestObservation) => void;
-	init?: Omit<HttpRequestInit, "method" | "endpointId" | "signal">;
+	init?: Omit<HttpRequestInit, "method" | "endpointId" | "signal" | "body">;
 }
+
+export type TypedEndpointRequestOptions<K extends EndpointId> = [EndpointRequestMap[K]] extends [
+	undefined,
+]
+	? CommonEndpointRequestOptions & { input?: undefined }
+	: CommonEndpointRequestOptions & { input: EndpointRequestMap[K] };
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -38,9 +50,15 @@ export class EndpointClient {
 
 	async request<K extends EndpointId>(
 		endpointId: K,
-		options: EndpointRequestOptions = {},
+		...optionsArgs: [TypedEndpointRequestOptions<K>] extends [
+			CommonEndpointRequestOptions & { input: EndpointRequestMap[K] },
+		]
+			? [options: TypedEndpointRequestOptions<K>]
+			: [options?: TypedEndpointRequestOptions<K>]
 	): Promise<DecodedResponse<EndpointResponseMap[K]> | undefined> {
+		const options = optionsArgs[0] ?? ({} as TypedEndpointRequestOptions<K>);
 		const endpoint = getEndpointContract(endpointId);
+		const descriptor = buildEndpointRequest(endpointId, options.input);
 		const url = options.url ?? buildEndpointUrl(options.baseUrl ?? DEFAULT_BASE_URL, endpointId);
 		const { controller, dispose } = createAbortController(endpoint.timeoutMs, options.signal);
 		const policy = options.retry ?? getEndpointRetryPolicy(endpointId);
@@ -52,16 +70,18 @@ export class EndpointClient {
 						...options.init,
 						signal: controller.signal,
 						endpointId,
-						body: options.init?.body,
+						body: descriptor.body ? JSON.stringify(descriptor.body) : undefined,
 						headers: new Headers(options.init?.headers),
 					};
 					const headers = new Headers(init.headers);
 					headers.set("Accept", "application/json");
-					if (options.init?.body) headers.set("Content-Type", "application/json");
+					if (descriptor.body) headers.set("Content-Type", "application/json");
 					init.headers = headers;
 					let response: Response;
 					try {
-						response = await fetchEndpoint(this._http, url, endpointId, init, this._credentials);
+						const request = init as EndpointRequestWithMetadata;
+						await applyEndpointPolicy(request, this._credentials);
+						response = await this._http.fetch(url, request);
 					} catch (error) {
 						if (error instanceof OpenRouterHttpError) throw error;
 						throw new EndpointTransportError(endpointId, error);

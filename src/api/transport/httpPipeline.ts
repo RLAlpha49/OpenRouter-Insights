@@ -17,12 +17,12 @@
 
 import type { HttpClient, HttpRequestInit } from "./httpClient";
 import { redactUrl } from "../redaction";
+import type { EndpointId } from "../endpoint/endpointCatalog";
 import {
-	getEndpointContract,
-	type EndpointAuth,
-	type EndpointId,
-} from "../endpoint/endpointCatalog";
-import { OpenRouterHttpError } from "./openRouterError";
+	applyEndpointPolicy,
+	type EndpointCredentialProviders,
+	type EndpointRequestWithMetadata,
+} from "./endpointPolicy";
 
 interface RequestMetadata {
 	refreshId?: number;
@@ -30,11 +30,6 @@ interface RequestMetadata {
 }
 
 export type EndpointRequestInit = HttpRequestInit & { endpointId?: EndpointId };
-
-export interface EndpointCredentialProviders {
-	apiKeyProvider: () => Promise<string>;
-	managementKeyProvider: () => Promise<string>;
-}
 
 /** Minimal logger interface to avoid circular imports. */
 interface PipelineLogger {
@@ -85,14 +80,11 @@ export async function fetchEndpoint(
 	client: HttpClient,
 	url: string,
 	endpointId: EndpointId,
-	init: RequestInit = {},
-	providers?: EndpointCredentialProviders,
+	init: RequestInit,
+	providers: EndpointCredentialProviders,
 ): Promise<Response> {
-	const endpoint = getEndpointContract(endpointId);
-	const request: EndpointRequestInit = { ...init, endpointId, method: endpoint.method };
-	if (providers) {
-		await applyEndpointPolicy(request, providers);
-	}
+	const request: EndpointRequestWithMetadata = { ...init, endpointId };
+	await applyEndpointPolicy(request, providers);
 	delete request.endpointId;
 	return client.fetch(url, request);
 }
@@ -123,47 +115,9 @@ export function withAuth(keyProvider: () => Promise<string>): HttpMiddleware {
  */
 export function withEndpointPolicy(providers: EndpointCredentialProviders): HttpMiddleware {
 	return async (req, _url, next) => {
-		await applyEndpointPolicy(req as EndpointRequestInit, providers);
+		await applyEndpointPolicy(req as EndpointRequestWithMetadata, providers);
 		return next();
 	};
-}
-
-async function applyEndpointPolicy(
-	req: EndpointRequestInit,
-	providers: EndpointCredentialProviders,
-): Promise<void> {
-	const endpointId = req.endpointId;
-	if (!endpointId) return;
-
-	const endpoint = getEndpointContract(endpointId);
-	req.method = endpoint.method;
-	const headers = new Headers(req.headers);
-	headers.delete("authorization");
-
-	const provider = credentialProviderFor(endpoint.auth, providers);
-	if (provider) {
-		const key = (await provider()).trim();
-		if (!key) {
-			throw new OpenRouterHttpError({
-				label: endpoint.id,
-				errorClass: "auth",
-				envelope: { message: `Missing credential for ${endpoint.id}` },
-			});
-		}
-		headers.set("Authorization", `Bearer ${key}`);
-	}
-
-	req.headers = headers;
-	delete req.endpointId;
-}
-
-function credentialProviderFor(
-	auth: EndpointAuth,
-	providers: EndpointCredentialProviders,
-): (() => Promise<string>) | undefined {
-	if (auth === "apiKey") return providers.apiKeyProvider;
-	if (auth === "managementKey") return providers.managementKeyProvider;
-	return undefined;
 }
 
 /**

@@ -186,6 +186,9 @@ async function fetchModelSpendBreakdownUncached(
 			"cache_hit_rate",
 		],
 	};
+	const timeRange = body.time_range;
+	const limit = body.limit;
+	if (!timeRange || limit === undefined) throw new Error("Analytics request is incomplete");
 
 	logger.debug(`AnalyticsService: querying ${dateFrom} → ${dateTo}`);
 
@@ -198,7 +201,11 @@ async function fetchModelSpendBreakdownUncached(
 			baseUrl,
 			signal,
 			onRequestObservation,
-			init: { body: JSON.stringify(body) },
+			input: {
+				start: timeRange.start,
+				end: timeRange.end,
+				limit,
+			},
 		});
 		if (!result) throw new Error("Analytics endpoint returned 304 without a cached response");
 

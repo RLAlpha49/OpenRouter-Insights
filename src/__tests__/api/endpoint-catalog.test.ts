@@ -4,6 +4,7 @@ import {
 	OPENROUTER_ENDPOINTS,
 	TRANSIENT_RETRY_POLICY,
 	buildAnalyticsRequest,
+	buildEndpointRequest,
 	buildKeyManagementRequest,
 	buildModelMetricsQuery,
 	getEndpointContract,
@@ -18,7 +19,22 @@ describe("OpenRouter endpoint catalog", () => {
 			expect(endpoint.decoder).toBeTruthy();
 			expect(endpoint.path).toMatch(/^\/api\/v1\//);
 			expect(endpoint.responseLimitBytes).toBeGreaterThan(0);
+			expect(endpoint.requestBuilder).toBeTypeOf("function");
 		}
+	});
+
+	it("builds endpoint requests through the typed catalog mapping", () => {
+		expect(buildEndpointRequest("models.list")).toMatchObject({
+			method: "GET",
+			path: "/api/v1/models",
+		});
+		expect(
+			buildEndpointRequest("analytics.query", {
+				start: "2026-08-01T00:00:00.000Z",
+				end: "2026-08-09T00:00:00.000Z",
+				limit: 25,
+			}),
+		).toMatchObject({ method: "POST", path: "/api/v1/analytics/query" });
 	});
 
 	it("builds the analytics request from its endpoint contract", () => {

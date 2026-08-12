@@ -49,6 +49,15 @@ describe("OpenRouter contract decoders", () => {
 		expect(decoded.issues[0].path).toBe("data[1]");
 	});
 
+	it("rejects an empty model collection as unusable", () => {
+		const decoded = decodeModelsResponse({ data: [] });
+
+		expect(decoded.status).toBe("partial");
+		expect(decoded.issues).toEqual([
+			{ path: "data", message: "Expected a non-empty model collection" },
+		]);
+	});
+
 	it("rejects malformed required envelopes", () => {
 		expect(decodeKeyResponse({ data: { label: "key" } }).status).toBe("invalid");
 		expect(decodeCreditsResponse({ data: { total_credits: "bad" } }).status).toBe("invalid");

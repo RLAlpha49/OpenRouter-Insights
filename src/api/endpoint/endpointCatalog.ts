@@ -5,6 +5,29 @@ import { API_TIMEOUTS_MS } from "../transport/timeouts";
 
 export type EndpointAuth = "none" | "apiKey" | "managementKey";
 
+export type EndpointId =
+	| "models.list"
+	| "keys.current"
+	| "keys.list"
+	| "credits.get"
+	| "activity.list"
+	| "analytics.query"
+	| "keys.create"
+	| "keys.update"
+	| "keys.delete";
+
+export interface EndpointRequestMap {
+	"models.list": undefined;
+	"keys.current": undefined;
+	"keys.list": undefined;
+	"credits.get": undefined;
+	"activity.list": undefined;
+	"analytics.query": { start: string; end: string; limit: number };
+	"keys.create": CreateKeyRequest;
+	"keys.update": UpdateKeyRequest & { hash: string };
+	"keys.delete": { hash: string };
+}
+
 export type EndpointDecoder =
 	| "models"
 	| "key"
@@ -24,7 +47,7 @@ export interface EndpointRequestDescriptor {
 }
 
 export interface OpenRouterEndpointContract {
-	readonly id: string;
+	readonly id: EndpointId;
 	readonly method: "GET" | "POST" | "PATCH" | "DELETE";
 	readonly path: string;
 	readonly auth: EndpointAuth;
@@ -34,6 +57,7 @@ export interface OpenRouterEndpointContract {
 	readonly docsUrl: string;
 	readonly capability: "pricing" | "usage" | "management" | "analytics" | "metrics";
 	readonly responseLimitBytes: number;
+	readonly requestBuilder: (_input: unknown) => EndpointRequestDescriptor;
 }
 
 const DEFAULT_RESPONSE_LIMIT_BYTES = 10 * 1024 * 1024;
@@ -50,6 +74,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/models/list-models",
 		capability: "pricing",
 		responseLimitBytes: DEFAULT_RESPONSE_LIMIT_BYTES,
+		requestBuilder: () => buildNoBodyRequest("models.list"),
 	},
 	{
 		id: "keys.current",
@@ -62,6 +87,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/overview#api-keys",
 		capability: "usage",
 		responseLimitBytes: 512 * 1024,
+		requestBuilder: () => buildNoBodyRequest("keys.current"),
 	},
 	{
 		id: "keys.list",
@@ -74,6 +100,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/api-keys/list-api-keys",
 		capability: "management",
 		responseLimitBytes: 2 * 1024 * 1024,
+		requestBuilder: () => buildNoBodyRequest("keys.list"),
 	},
 	{
 		id: "credits.get",
@@ -86,6 +113,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/credits/get-remaining-credits",
 		capability: "management",
 		responseLimitBytes: 512 * 1024,
+		requestBuilder: () => buildNoBodyRequest("credits.get"),
 	},
 	{
 		id: "activity.list",
@@ -98,6 +126,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/activity/get-activity",
 		capability: "usage",
 		responseLimitBytes: 4 * 1024 * 1024,
+		requestBuilder: () => buildNoBodyRequest("activity.list"),
 	},
 	{
 		id: "analytics.query",
@@ -110,6 +139,8 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/analytics/query",
 		capability: "analytics",
 		responseLimitBytes: 4 * 1024 * 1024,
+		requestBuilder: (input) =>
+			buildAnalyticsRequest(input as EndpointRequestMap["analytics.query"]),
 	},
 	{
 		id: "keys.create",
@@ -122,6 +153,7 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/api-keys/create-api-key",
 		capability: "management",
 		responseLimitBytes: 512 * 1024,
+		requestBuilder: (input) => buildKeyManagementRequest("keys.create", input as CreateKeyRequest),
 	},
 	{
 		id: "keys.update",
@@ -134,6 +166,8 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/api-keys/update-api-key",
 		capability: "management",
 		responseLimitBytes: 512 * 1024,
+		requestBuilder: (input) =>
+			buildKeyManagementRequest("keys.update", input as UpdateKeyRequest & { hash: string }),
 	},
 	{
 		id: "keys.delete",
@@ -146,16 +180,24 @@ export const OPENROUTER_ENDPOINTS = [
 		docsUrl: "https://openrouter.ai/docs/api-reference/api-keys/delete-api-key",
 		capability: "management",
 		responseLimitBytes: 128 * 1024,
+		requestBuilder: (input) => buildDeleteKeyRequest(input as { hash: string }),
 	},
 ] as const satisfies readonly OpenRouterEndpointContract[];
-
-export type EndpointId = (typeof OPENROUTER_ENDPOINTS)[number]["id"];
 
 /** Return the canonical runtime contract for an endpoint ID. */
 export function getEndpointContract(id: EndpointId): OpenRouterEndpointContract {
 	const endpoint = OPENROUTER_ENDPOINTS.find((candidate) => candidate.id === id);
 	if (!endpoint) throw new Error(`Unknown OpenRouter endpoint: ${id}`);
 	return endpoint;
+}
+
+/** Build the validated request descriptor associated with an endpoint ID. */
+export function buildEndpointRequest<K extends EndpointId>(
+	id: K,
+	input: EndpointRequestMap[K] = undefined as EndpointRequestMap[K],
+): EndpointRequestDescriptor {
+	const endpoint = getEndpointContract(id);
+	return endpoint.requestBuilder(input);
 }
 
 /** Retry budget a caller passes to `fetchWithRetry` for one endpoint. */
@@ -235,6 +277,13 @@ function validateKeyBody(body: CreateKeyRequest | UpdateKeyRequest): Record<stri
 	if (body.limit !== undefined && (!Number.isFinite(body.limit) || body.limit < 0)) {
 		throw new Error("API key limit must be a finite non-negative number");
 	}
+	const expiration = "days_until_expiration" in body ? body.days_until_expiration : undefined;
+	if (
+		expiration !== undefined &&
+		(!Number.isInteger(expiration) || expiration < 1 || expiration > 3650)
+	) {
+		throw new Error("API key expiration must be between 1 and 3650 days");
+	}
 	return { ...body };
 }
 
@@ -266,6 +315,13 @@ export function buildAnalyticsRequest(input: {
 	return { method: "POST", path: getEndpointContract("analytics.query").path, body };
 }
 
+function buildNoBodyRequest(
+	id: Exclude<EndpointId, "analytics.query" | "keys.create" | "keys.update" | "keys.delete">,
+): EndpointRequestDescriptor {
+	const endpoint = getEndpointContract(id);
+	return { method: endpoint.method, path: endpoint.path };
+}
+
 export function buildKeyManagementRequest(
 	id: "keys.create" | "keys.update",
 	input: (CreateKeyRequest | UpdateKeyRequest) & { hash?: string },
@@ -280,6 +336,15 @@ export function buildKeyManagementRequest(
 		method: getEndpointContract(id).method,
 		path: getEndpointContract(id).path,
 		body: validateKeyBody(body),
+	};
+}
+
+function buildDeleteKeyRequest(input: { hash: string }): EndpointRequestDescriptor {
+	validateKeyHash(input.hash);
+	const endpoint = getEndpointContract("keys.delete");
+	return {
+		method: endpoint.method,
+		path: endpoint.path,
 	};
 }
 

@@ -154,6 +154,9 @@ export function decodeModelsResponse(input: unknown): DecodeResult<DecodedModels
 	const issues: DecodeIssue[] = [];
 	const data: Record<string, unknown>[] = [];
 	let dropped = 0;
+	if (body.data.length === 0) {
+		issues.push({ path: "data", message: "Expected a non-empty model collection" });
+	}
 	body.data.forEach((item, index) => {
 		const decoded = decodeModelEntry(item);
 		if (decoded) data.push(decoded);
