@@ -14,7 +14,6 @@
  * contracts in `composition/contracts.ts` instead of this whole graph.
  */
 
-import type { ExtensionContext } from "vscode";
 import type * as vscode from "vscode";
 import type { IPricingCache } from "../api/cache/pricingStore";
 import type { SecretStorageService } from "../api/secretStorageService";
@@ -81,96 +80,101 @@ export interface ServiceContainer extends vscode.Disposable {
 	readonly diagnostics: RuntimeDiagnostics;
 }
 
-export function createServices(context: ExtensionContext): ServiceContainer {
+export function createServices(context: vscode.ExtensionContext): ServiceContainer {
 	const disposables = new RuntimeDisposables();
-	const config = ConfigService.instance;
-	const eventBus = disposables.add(new EventBus());
+	try {
+		const config = ConfigService.instance;
+		const eventBus = disposables.add(new EventBus());
 
-	const api = createApiServices(context, disposables);
-	const pricing = createPricingServices({
-		cache: api.cache,
-		config,
-		httpClient: api.httpPipeline,
-		eventBus,
-		diagnostics: api.diagnostics,
-		disposables,
-	});
-	const usage = createUsageServices({
-		usageCache: api.usageCache,
-		secrets: api.secrets,
-		pricingIndex: api.cache,
-		config,
-		httpClient: api.httpPipeline,
-		eventBus,
-		logger: log,
-		diagnostics: api.diagnostics,
-		disposables,
-	});
-
-	const features = disposables.add(new FeatureRegistry());
-	const refreshCoordinator = disposables.add(new RefreshCoordinator(api.diagnostics));
-
-	const doRefresh = async () => {
-		await refreshCoordinator.acquire("pricing", "user", async (ctx) => {
-			pricing.statusBar.showLoading();
-			eventBus.emit("refreshStarted", undefined);
-			try {
-				await pricing.refreshUseCase.execute(ctx);
-				if (ctx.isCancelled()) return;
-				const cachedData = api.cache.get();
-				if (cachedData) {
-					eventBus.emit("pricingRefreshed", cachedData);
-				}
-				await pricing.statusBarUseCase.execute();
-			} finally {
-				pricing.statusBar.clearLoading();
-			}
+		const api = createApiServices(context, disposables);
+		const pricing = createPricingServices({
+			cache: api.cache,
+			config,
+			httpClient: api.httpPipeline,
+			eventBus,
+			diagnostics: api.diagnostics,
+			disposables,
 		});
-	};
+		const usage = createUsageServices({
+			usageCache: api.usageCache,
+			secrets: api.secrets,
+			pricingIndex: api.cache,
+			config,
+			httpClient: api.httpPipeline,
+			eventBus,
+			logger: log,
+			diagnostics: api.diagnostics,
+			disposables,
+		});
 
-	const doUsageRefresh = async (reason: RefreshReason = "user") => {
-		await refreshCoordinator.acquire("usage", reason, (ctx) =>
-			usage.usageRefreshUseCase.execute(undefined, ctx),
-		);
-	};
+		const features = disposables.add(new FeatureRegistry());
+		const refreshCoordinator = disposables.add(new RefreshCoordinator(api.diagnostics));
 
-	const commands = createCommandServices({
-		cache: api.cache,
-		usageCache: api.usageCache,
-		secrets: api.secrets,
-		statusBar: pricing.statusBar,
-		modelPicker: pricing.modelPicker,
-		usageRefreshUseCase: usage.usageRefreshUseCase,
-		eventBus,
-		diagnostics: api.diagnostics,
-		httpClient: api.httpPipeline,
-		features,
-		doRefresh,
-		doUsageRefresh: () => doUsageRefresh(),
-		openExpandedDashboard: () => usage.usageDashboard.openExpandedPanel(),
-	});
+		const doRefresh = async () => {
+			await refreshCoordinator.acquire("pricing", "user", async (ctx) => {
+				pricing.statusBar.showLoading();
+				eventBus.emit("refreshStarted", undefined);
+				try {
+					await pricing.refreshUseCase.execute(ctx);
+					if (ctx.isCancelled()) return;
+					const cachedData = api.cache.get();
+					if (cachedData) {
+						eventBus.emit("pricingRefreshed", cachedData);
+					}
+					await pricing.statusBarUseCase.execute();
+				} finally {
+					pricing.statusBar.clearLoading();
+				}
+			});
+		};
 
-	log.info("ServiceContainer: registered", commands.size, "commands");
+		const doUsageRefresh = async (reason: RefreshReason = "user") => {
+			await refreshCoordinator.acquire("usage", reason, (ctx) =>
+				usage.usageRefreshUseCase.execute(undefined, ctx),
+			);
+		};
 
-	return Object.freeze({
-		cache: api.cache,
-		statusBar: pricing.statusBar,
-		usageStatusBar: usage.usageStatusBar,
-		usageDashboard: usage.usageDashboard,
-		secrets: api.secrets,
-		modelPicker: pricing.modelPicker,
-		refreshUseCase: pricing.refreshUseCase,
-		statusBarUseCase: pricing.statusBarUseCase,
-		usageRefreshUseCase: usage.usageRefreshUseCase,
-		eventBus,
-		features,
-		commands,
-		refreshCoordinator,
-		doRefresh,
-		doUsageRefresh,
-		showLoading: () => pricing.statusBar.showLoading(),
-		clearLoading: () => pricing.statusBar.clearLoading(),
-		diagnostics: api.diagnostics,
-		dispose: () => disposables.dispose(),
-	});
+		const commands = createCommandServices({
+			cache: api.cache,
+			usageCache: api.usageCache,
+			secrets: api.secrets,
+			statusBar: pricing.statusBar,
+			modelPicker: pricing.modelPicker,
+			usageRefreshUseCase: usage.usageRefreshUseCase,
+			eventBus,
+			diagnostics: api.diagnostics,
+			httpClient: api.httpPipeline,
+			features,
+			doRefresh,
+			doUsageRefresh: () => doUsageRefresh(),
+			openExpandedDashboard: () => usage.usageDashboard.openExpandedPanel(),
+		});
+
+		log.info("ServiceContainer: registered", commands.size, "commands");
+
+		return Object.freeze({
+			cache: api.cache,
+			statusBar: pricing.statusBar,
+			usageStatusBar: usage.usageStatusBar,
+			usageDashboard: usage.usageDashboard,
+			secrets: api.secrets,
+			modelPicker: pricing.modelPicker,
+			refreshUseCase: pricing.refreshUseCase,
+			statusBarUseCase: pricing.statusBarUseCase,
+			usageRefreshUseCase: usage.usageRefreshUseCase,
+			eventBus,
+			features,
+			commands,
+			refreshCoordinator,
+			doRefresh,
+			doUsageRefresh,
+			showLoading: () => pricing.statusBar.showLoading(),
+			clearLoading: () => pricing.statusBar.clearLoading(),
+			diagnostics: api.diagnostics,
+			dispose: () => disposables.dispose(),
+		});
+	} catch (error) {
+		disposables.dispose();
+		throw error;
+	}
 }

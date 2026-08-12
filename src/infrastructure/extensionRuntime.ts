@@ -34,6 +34,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 	readonly diagnostics: RuntimeDiagnostics;
 	private readonly config: ConfigService;
 	private started = false;
+	private initialized = false;
 
 	private async runInBackground(label: string, work: () => Promise<unknown>): Promise<void> {
 		await work().catch((error: unknown) => {
@@ -53,7 +54,8 @@ export class ExtensionRuntime implements vscode.Disposable {
 
 	constructor(
 		private readonly _context: vscode.ExtensionContext,
-		private readonly _services: RuntimeServices & CommandServices,
+		private readonly _services: RuntimeServices,
+		private readonly _commandServices?: CommandServices,
 	) {
 		this.config = ConfigService.instance;
 		this.diagnostics = _services.diagnostics ?? new RuntimeDiagnostics();
@@ -85,6 +87,12 @@ export class ExtensionRuntime implements vscode.Disposable {
 				error,
 			);
 		});
+	}
+
+	initialize(): void {
+		if (this.disposed || this.initialized) return;
+		this.initialized = true;
+		this._commandServices?.features.syncContextKeys?.(this.config.usageShowDashboard);
 		this._features.reconcileAll();
 		this._services.modelPicker.warmConfiguredModelDiscovery();
 		this._disposables.push(
@@ -102,6 +110,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 					},
 					onPollIntervalChanged: () => this.modelPolling.schedule(),
 					onUsageDataSettingsChanged: () => {
+						this._syncFeatureContextKeys();
 						if (!this.disposed && this.config.isFeatureEnabled("usage")) {
 							this.runInBackground("usage settings refresh", async () => {
 								await this._services.doUsageRefresh();
@@ -130,11 +139,21 @@ export class ExtensionRuntime implements vscode.Disposable {
 				},
 				this._services.eventBus,
 			),
-			this.config.onFeatureChanged((feature: FeatureId) => this._features.reconcile(feature)),
-			this.config.onAnyConfigChanged(() => this._features.reconcileAll()),
-			registerCommands(this._context, this._services),
+			this.config.onFeatureChanged((feature: FeatureId) => {
+				this._features.reconcile(feature);
+				this._syncFeatureContextKeys();
+			}),
+			this.config.onAnyConfigChanged(() => {
+				this._features.reconcileAll();
+				this._syncFeatureContextKeys();
+			}),
+			...(this._commandServices ? [registerCommands(this._context, this._commandServices)] : []),
 		);
 		this.refreshScheduler.schedule();
+	}
+
+	private _syncFeatureContextKeys(): void {
+		this._commandServices?.features.syncContextKeys?.(this.config.usageShowDashboard);
 	}
 
 	async start(): Promise<void> {
@@ -218,6 +237,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 					}
 				},
 				deactivated: () => {
+					this._services.usageStatusBar.setEnabled(false);
 					this.usagePolling = undefined;
 					this.usageDashboardRegistration = undefined;
 				},

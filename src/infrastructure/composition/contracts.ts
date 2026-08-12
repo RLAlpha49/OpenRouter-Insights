@@ -45,6 +45,7 @@ export interface UsageDetailRefresh {
 /** Command-gating capability used when registering and invoking commands. */
 export interface CommandGate {
 	shouldRegisterCommand(_commandId: string): boolean;
+	syncContextKeys?(_showDashboard: boolean): void;
 }
 
 /** Everything `ExtensionRuntime` needs from the composition root. */

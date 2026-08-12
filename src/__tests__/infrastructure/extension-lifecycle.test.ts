@@ -155,6 +155,7 @@ describe("ExtensionRuntime lifecycle", () => {
 			dispose: vi.fn(),
 		} as any;
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 		await runtime.start();
 		runtime.dispose();
@@ -189,6 +190,7 @@ describe("ExtensionRuntime lifecycle", () => {
 			dispose: vi.fn(),
 		} as any;
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 		runtime.dispose();
 		expect(services.doRefresh).toHaveBeenCalled();
@@ -230,6 +232,7 @@ describe("ExtensionRuntime lifecycle", () => {
 			dispose: vi.fn(),
 		} as any;
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 		await Promise.resolve();
 		await Promise.resolve();
@@ -267,6 +270,7 @@ describe("ExtensionRuntime lifecycle", () => {
 			dispose: vi.fn(),
 		} as any;
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		runtime.dispose();
 		await runtime.start();
 		expect(services.eventBus.emit).not.toHaveBeenCalledWith("refreshFailed", expect.anything());
@@ -338,6 +342,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		services.cache.isStale = () => true;
 		services.doRefresh = vi.fn(() => pricingPending);
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 
 		expect(services.doUsageRefresh).not.toHaveBeenCalled();
 		const start = runtime.start();
@@ -364,6 +369,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 			return disposable;
 		});
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, baseServices());
+		runtime.initialize();
 		expect(hoverDisposables).toHaveLength(1);
 
 		updateConfig({
@@ -393,6 +399,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		});
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		expect(services.statusBar.setEnabled).toHaveBeenCalledWith(true);
 
 		updateConfig({
@@ -421,6 +428,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		});
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 		expect(webviewRegistrations).toHaveLength(1);
 		expect(services.usageStatusBar.setEnabled).toHaveBeenCalledWith(true);
@@ -461,6 +469,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		}));
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 
 		expect(services.usageStatusBar.setEnabled).toHaveBeenCalledWith(false);
@@ -484,6 +493,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		});
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		await runtime.start();
 
 		expect(webviewRegistrations).toHaveLength(0);
@@ -521,6 +531,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		});
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 
 		(runtime as any).runInBackground("probe", async () => {
 			throw new Error("background boom");
@@ -548,6 +559,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		});
 		const services = baseServices();
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		services.statusBar.setEnabled.mockClear();
 
 		runtime.dispose();
@@ -575,6 +587,7 @@ describe("ExtensionRuntime feature reconciliation", () => {
 		const services = baseServices();
 		services.cache.get = vi.fn(() => ({ models: [] }));
 		const runtime = new ExtensionRuntime({ subscriptions: [] } as any, services);
+		runtime.initialize();
 		const listeners = (vscode.workspace as any)._createConfigListeners;
 		const fire = (key: string) =>
 			listeners.forEach(

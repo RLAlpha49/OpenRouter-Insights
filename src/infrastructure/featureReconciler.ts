@@ -103,9 +103,16 @@ export class FeatureReconciler implements vscode.Disposable {
 				definition.sync?.();
 				return;
 			}
-			this._resources.set(feature, definition.activate?.());
-			definition.sync?.();
-			definition.activated?.();
+			const resource = definition.activate?.();
+			this._resources.set(feature, resource);
+			try {
+				definition.sync?.();
+				definition.activated?.();
+			} catch (error) {
+				this._resources.delete(feature);
+				resource?.dispose();
+				throw error;
+			}
 		} catch (error) {
 			this._onError?.(feature, error);
 		}

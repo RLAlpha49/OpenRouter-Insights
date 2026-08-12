@@ -79,6 +79,22 @@ export class FeatureRegistry implements vscode.Disposable {
 		];
 	}
 
+	/** Publish feature state for manifest `when` and `enablement` expressions. */
+	syncContextKeys(showDashboard: boolean): void {
+		for (const feature of FEATURE_IDS) {
+			void vscode.commands.executeCommand(
+				"setContext",
+				`openrouter-insights:feature.${feature}.enabled`,
+				this.isEnabled(feature),
+			);
+		}
+		void vscode.commands.executeCommand(
+			"setContext",
+			"openrouter-insights:usageDashboardEnabled",
+			showDashboard && this.isEnabled("usage"),
+		);
+	}
+
 	dispose(): void {
 		for (const disposable of this._disposables) disposable.dispose();
 		this._disposables.length = 0;

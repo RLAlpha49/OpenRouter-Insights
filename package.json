@@ -47,7 +47,8 @@
 					"id": "openrouter-insights.usageDashboard",
 					"name": "OpenRouter Insights",
 					"type": "webview",
-					"icon": "images/usage-icon.svg"
+					"icon": "images/usage-icon.svg",
+					"when": "openrouter-insights:usageDashboardEnabled"
 				}
 			]
 		},
@@ -62,12 +63,14 @@
 				"command": "openrouter-insights.browseModels",
 				"title": "Browse Model Pricing",
 				"category": "OpenRouter Insights",
-				"icon": "$(list-tree)"
+				"icon": "$(list-tree)",
+				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
 				"command": "openrouter-insights.toggleStatusBar",
 				"title": "Toggle Status Bar Display",
-				"category": "OpenRouter Insights"
+				"category": "OpenRouter Insights",
+				"enablement": "openrouter-insights:feature.statusBar.enabled"
 			},
 			{
 				"command": "openrouter-insights.showLogs",
@@ -85,31 +88,36 @@
 				"command": "openrouter-insights.exportCsv",
 				"title": "Export Pricing as CSV",
 				"category": "OpenRouter Insights",
-				"icon": "$(export)"
+				"icon": "$(export)",
+				"enablement": "openrouter-insights:feature.export.enabled"
 			},
 			{
 				"command": "openrouter-insights.exportJson",
 				"title": "Export Pricing as JSON",
 				"category": "OpenRouter Insights",
-				"icon": "$(export)"
+				"icon": "$(export)",
+				"enablement": "openrouter-insights:feature.export.enabled"
 			},
 			{
 				"command": "openrouter-insights.compareModels",
 				"title": "Compare Models",
 				"category": "OpenRouter Insights",
-				"icon": "$(compare-changes)"
+				"icon": "$(compare-changes)",
+				"enablement": "openrouter-insights:feature.comparison.enabled"
 			},
 			{
 				"command": "openrouter-insights.setModelOverride",
 				"title": "Set Model Override",
 				"category": "OpenRouter Insights",
-				"icon": "$(arrow-swap)"
+				"icon": "$(arrow-swap)",
+				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
 				"command": "openrouter-insights.addToFavorites",
 				"title": "Add to Favorites",
 				"category": "OpenRouter Insights",
-				"icon": "$(star-add)"
+				"icon": "$(star-add)",
+				"enablement": "openrouter-insights:feature.favorites.enabled"
 			},
 			{
 				"command": "openrouter-insights.copyModelId",
@@ -127,7 +135,8 @@
 				"command": "openrouter-insights.removeFromFavorites",
 				"title": "Remove from Favorites",
 				"category": "OpenRouter Insights",
-				"icon": "$(star-delete)"
+				"icon": "$(star-delete)",
+				"enablement": "openrouter-insights:feature.favorites.enabled"
 			},
 			{
 				"command": "openrouter-insights.clearCache",
@@ -163,71 +172,83 @@
 				"command": "openrouter-insights.setApiKey",
 				"title": "Set Extension API Key (OpenRouter)",
 				"category": "OpenRouter Insights",
-				"icon": "$(key)"
+				"icon": "$(key)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.removeApiKey",
 				"title": "Remove Extension API Key",
 				"category": "OpenRouter Insights",
-				"icon": "$(trash)"
+				"icon": "$(trash)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.refreshUsage",
 				"title": "Refresh Usage Data",
 				"category": "OpenRouter Insights",
-				"icon": "$(refresh)"
+				"icon": "$(refresh)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.loadUsageDetails",
 				"title": "Load Usage Details",
-				"category": "OpenRouter Insights"
+				"category": "OpenRouter Insights",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.selectUsageKey",
 				"title": "Select API Key for Usage View",
-				"category": "OpenRouter Insights"
+				"category": "OpenRouter Insights",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.openUsageDashboard",
 				"title": "Open Usage Dashboard",
 				"category": "OpenRouter Insights",
-				"icon": "$(dashboard)"
+				"icon": "$(dashboard)",
+				"enablement": "openrouter-insights:feature.usage.enabled && openrouter-insights:usageDashboardEnabled"
 			},
 			{
 				"command": "openrouter-insights.openExpandedDashboard",
 				"title": "Open Expanded Usage Dashboard",
 				"category": "OpenRouter Insights",
-				"icon": "$(layout)"
+				"icon": "$(layout)",
+				"enablement": "openrouter-insights:feature.usage.enabled && openrouter-insights:usageDashboardEnabled"
 			},
 			{
 				"command": "openrouter-insights.createApiKey",
 				"title": "Create API Key",
 				"category": "OpenRouter Insights",
-				"icon": "$(add)"
+				"icon": "$(add)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.renameApiKey",
 				"title": "Rename API Key",
 				"category": "OpenRouter Insights",
-				"icon": "$(edit)"
+				"icon": "$(edit)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.toggleApiKey",
 				"title": "Enable/Disable API Key",
 				"category": "OpenRouter Insights",
-				"icon": "$(debug-alt)"
+				"icon": "$(debug-alt)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.setKeyLimit",
 				"title": "Set API Key Credit Limit",
 				"category": "OpenRouter Insights",
-				"icon": "$(lock)"
+				"icon": "$(lock)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.deleteApiKey",
 				"title": "Delete API Key",
 				"category": "OpenRouter Insights",
-				"icon": "$(trash)"
+				"icon": "$(trash)",
+				"enablement": "openrouter-insights:feature.usage.enabled"
 			}
 		],
 		"configuration": {

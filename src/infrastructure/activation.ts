@@ -16,6 +16,7 @@ import type * as vscode from "vscode";
 import { ConfigService } from "./config";
 import { ExtensionRuntime } from "./extensionRuntime";
 import { createServices, type ServiceContainer } from "./services";
+import type { CommandServices, RuntimeServices } from "./composition/contracts";
 
 export class ExtensionActivation implements vscode.Disposable {
 	private _disposed = false;
@@ -36,7 +37,28 @@ export class ExtensionActivation implements vscode.Disposable {
 	static create(context: vscode.ExtensionContext): ExtensionActivation {
 		const services = createServices(context);
 		try {
-			return new ExtensionActivation(services, new ExtensionRuntime(context, services));
+			const runtimeServices: RuntimeServices = {
+				cache: services.cache,
+				statusBar: services.statusBar,
+				usageStatusBar: services.usageStatusBar,
+				usageDashboard: services.usageDashboard,
+				secrets: services.secrets,
+				modelPicker: services.modelPicker,
+				statusBarUseCase: services.statusBarUseCase,
+				usageRefreshUseCase: services.usageRefreshUseCase,
+				eventBus: services.eventBus,
+				doRefresh: services.doRefresh,
+				doUsageRefresh: services.doUsageRefresh,
+				diagnostics: services.diagnostics,
+			};
+			const commandServices: CommandServices = {
+				commands: services.commands,
+				features: services.features,
+				diagnostics: services.diagnostics,
+			};
+			const runtime = new ExtensionRuntime(context, runtimeServices, commandServices);
+			runtime.initialize();
+			return new ExtensionActivation(services, runtime);
 		} catch (error) {
 			services.dispose();
 			ConfigService.instance.dispose();
