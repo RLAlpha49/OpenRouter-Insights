@@ -28,7 +28,8 @@ export type SqliteReadDiagnostic =
 	| "no-match"
 	| "partial-scan"
 	| "wal-unreadable"
-	| "wal-incomplete";
+	| "wal-incomplete"
+	| "unstable-snapshot";
 
 /**
  * Completeness of one B-tree walk over the `ItemTable`.
@@ -53,6 +54,12 @@ export interface SqliteReadResult {
 	value?: string;
 	diagnostic: SqliteReadDiagnostic;
 	/** Completeness of the snapshot index the lookup was resolved against. */
+	scan?: SnapshotScanHealth;
+}
+
+export interface SqliteReadValuesResult {
+	values: Map<string, string>;
+	diagnostic: SqliteReadDiagnostic;
 	scan?: SnapshotScanHealth;
 }
 
@@ -544,25 +551,32 @@ function mergeWalIntoDatabase(
 		return undefined;
 	}
 
-	// Overlay the newest committed page image for each frame.
-	const merged = Buffer.from(dbBuffer);
+	// Keep uncommitted frames isolated from the last committed image. SQLite
+	// readers must not expose pages from a transaction that has no commit frame.
+	let committed = Buffer.from(dbBuffer);
+	const working = Buffer.from(dbBuffer);
 	const ctx: WalMergeContext = {
 		wal,
 		frameSize,
 		walHeader,
 		header,
-		merged,
+		merged: working,
 	};
 	let offset = WAL_HEADER_SIZE;
+	let sawCommit = false;
 	for (let frame = 0; frame < maxFrames; frame++) {
 		const frameResult = applyWalFrame(ctx, offset, s1, s2);
 		if (!frameResult.valid) return undefined;
 		s1 = frameResult.s1;
 		s2 = frameResult.s2;
+		if (frameResult.dbSize !== 0) {
+			committed = Buffer.from(working);
+			sawCommit = true;
+		}
 		offset += frameSize;
 	}
 
-	return { buffer: merged, incomplete: capped };
+	return { buffer: committed, incomplete: capped || !sawCommit };
 }
 
 /** Shared state for applying WAL frames to the merged database image. */
@@ -584,7 +598,7 @@ function applyWalFrame(
 	frameStart: number,
 	s1: number,
 	s2: number,
-): { valid: boolean; s1: number; s2: number } {
+): { valid: boolean; s1: number; s2: number; dbSize: number } {
 	const { wal, frameSize, walHeader, header, merged } = ctx;
 	const pgno = wal.readUInt32BE(frameStart);
 	const dbSize = wal.readUInt32BE(frameStart + 4);
@@ -595,7 +609,7 @@ function applyWalFrame(
 
 	// Frame is valid only when salts match the WAL header.
 	if (salt1 !== walHeader.salt1 || salt2 !== walHeader.salt2) {
-		return { valid: false, s1, s2 };
+		return { valid: false, s1, s2, dbSize: 0 };
 	}
 
 	const input = Buffer.concat([
@@ -604,7 +618,7 @@ function applyWalFrame(
 	]);
 	const ck = walChecksumExtend(input, s1, s2, walHeader.littleEndian);
 	if (ck.s1 !== storedC1 || ck.s2 !== storedC2) {
-		return { valid: false, s1, s2 };
+		return { valid: false, s1, s2, dbSize: 0 };
 	}
 
 	// Overlay the page image (respecting the reserved-byte tail).
@@ -626,7 +640,7 @@ function applyWalFrame(
 		merged.fill(0, dbSize * header.pageSize);
 	}
 
-	return { valid: true, s1: ck.s1, s2: ck.s2 };
+	return { valid: true, s1: ck.s1, s2: ck.s2, dbSize };
 }
 
 // ── Snapshot identity ──────────────────────────────────────────
@@ -741,6 +755,8 @@ interface SnapshotIndex {
 	walMerged: boolean;
 	/** True when the WAL was truncated at the frame cap and the snapshot may not contain the newest committed values. */
 	incomplete: boolean;
+	/** Keys requested while building this bounded index. */
+	requestedKeys?: ReadonlySet<string>;
 }
 let _snapshotIndex: SnapshotIndex | undefined;
 
@@ -771,6 +787,110 @@ function resolveFromIndex(index: SnapshotIndex, key: string): SqliteReadResult {
  */
 export function readItemTableValue(dbPath: string, key: string): string | undefined {
 	return readItemTableValueDetailed(dbPath, key).value;
+}
+
+/** Read several ItemTable keys against one cached snapshot index. */
+export function readItemTableValuesWalAware(
+	dbPath: string,
+	keys: readonly string[],
+	snapshot?: Buffer,
+): SqliteReadValuesResult {
+	return readItemTableValuesWalAwareInternal(dbPath, keys, snapshot);
+}
+
+/** Read the requested keys from one consistent main/WAL snapshot. */
+function readItemTableValuesWalAwareInternal(
+	dbPath: string,
+	keys: readonly string[],
+	snapshot?: Buffer,
+): SqliteReadValuesResult {
+	if (keys.length === 0) return { values: new Map(), diagnostic: "ok" };
+
+	let buffer: Buffer;
+	let stat: fs.Stats | undefined;
+	if (snapshot) {
+		buffer = snapshot;
+	} else {
+		try {
+			stat = fs.statSync(dbPath);
+			buffer = fs.readFileSync(dbPath);
+		} catch {
+			return { values: new Map(), diagnostic: "not-found" };
+		}
+	}
+
+	let header: SqliteHeader;
+	try {
+		header = parseHeader(buffer);
+	} catch {
+		return { values: new Map(), diagnostic: "corrupt" };
+	}
+
+	let beforeSignature: SnapshotSignature;
+	try {
+		beforeSignature = readSnapshotSignature(dbPath);
+	} catch {
+		return { values: new Map(), diagnostic: "busy" };
+	}
+
+	const merged = mergeWalIntoDatabase(dbPath, buffer, header);
+	if (merged === undefined) return { values: new Map(), diagnostic: "wal-unreadable" };
+
+	let afterSignature: SnapshotSignature;
+	try {
+		afterSignature = readSnapshotSignature(dbPath);
+	} catch {
+		return { values: new Map(), diagnostic: "busy" };
+	}
+	if (!sameSnapshotSignature(beforeSignature, afterSignature)) {
+		return { values: new Map(), diagnostic: "unstable-snapshot" };
+	}
+
+	const { buffer: mergedBuffer, incomplete: walIncomplete } = merged;
+	const identity = computeWalAwareIdentity(
+		dbPath,
+		mergedBuffer,
+		stat ?? ({ size: mergedBuffer.length, mtimeMs: 0 } as fs.Stats),
+	);
+	if (_itemTableRootPage === undefined || _cachedIdentity !== identity) {
+		_itemTableRootPage = findItemTableRootPage(mergedBuffer, header);
+		_cachedIdentity = identity;
+	}
+	if (_itemTableRootPage === undefined)
+		return { values: new Map(), diagnostic: "unsupported-schema" };
+
+	const requestedKeys = new Set(keys);
+	if (
+		_snapshotIndex?.identity !== identity ||
+		!keys.every((key) => _snapshotIndex?.requestedKeys?.has(key))
+	) {
+		const index = buildSnapshotIndex(mergedBuffer, _itemTableRootPage, header, requestedKeys);
+		if (!index) return { values: new Map(), diagnostic: "corrupt" };
+		_snapshotIndex = {
+			identity,
+			values: index.values,
+			scan: index.scan,
+			walMerged: true,
+			incomplete: walIncomplete,
+			requestedKeys,
+		};
+	}
+
+	const values = new Map<string, string>();
+	for (const key of keys) {
+		const value = _snapshotIndex.values.get(key);
+		if (value !== undefined) values.set(key, value);
+	}
+	if (walIncomplete)
+		return { values: new Map(), diagnostic: "wal-incomplete", scan: _snapshotIndex.scan };
+	if (values.size === 0 && !_snapshotIndex.scan.complete) {
+		return { values, diagnostic: "partial-scan", scan: _snapshotIndex.scan };
+	}
+	return {
+		values,
+		diagnostic: values.size > 0 ? "ok" : "no-match",
+		scan: _snapshotIndex.scan,
+	};
 }
 
 /** Read a value and preserve the operational reason when no value is returned. */
@@ -863,10 +983,27 @@ export function readItemTableValueWalAware(
 		return { diagnostic: "corrupt" };
 	}
 
+	let beforeSignature: SnapshotSignature;
+	try {
+		beforeSignature = readSnapshotSignature(dbPath);
+	} catch {
+		return { diagnostic: "busy" };
+	}
+
 	const merged = mergeWalIntoDatabase(dbPath, buffer, header);
 	if (merged === undefined) {
 		// A WAL file exists but could not be read — surface a distinct diagnostic.
 		return { diagnostic: "wal-unreadable" };
+	}
+
+	let afterSignature: SnapshotSignature;
+	try {
+		afterSignature = readSnapshotSignature(dbPath);
+	} catch {
+		return { diagnostic: "busy" };
+	}
+	if (!sameSnapshotSignature(beforeSignature, afterSignature)) {
+		return { diagnostic: "unstable-snapshot" };
 	}
 
 	const { buffer: mergedBuffer, incomplete: walIncomplete } = merged;
@@ -886,8 +1023,10 @@ export function readItemTableValueWalAware(
 	if (_itemTableRootPage === undefined) return { diagnostic: "unsupported-schema" };
 
 	// Per-snapshot index.
-	if (_snapshotIndex?.identity !== identity) {
-		const index = buildSnapshotIndex(mergedBuffer, _itemTableRootPage, header);
+	if (_snapshotIndex?.identity !== identity || !_snapshotIndex.requestedKeys?.has(key)) {
+		const requestedKeys = new Set(_snapshotIndex?.requestedKeys ?? []);
+		requestedKeys.add(key);
+		const index = buildSnapshotIndex(mergedBuffer, _itemTableRootPage, header, requestedKeys);
 		if (!index) return { diagnostic: "corrupt" };
 		_snapshotIndex = {
 			identity,
@@ -895,6 +1034,7 @@ export function readItemTableValueWalAware(
 			scan: index.scan,
 			walMerged: true,
 			incomplete: walIncomplete,
+			requestedKeys,
 		};
 	}
 
@@ -921,6 +1061,7 @@ function buildSnapshotIndex(
 	buffer: Buffer,
 	rootPage: number,
 	header: SqliteHeader,
+	requestedKeys?: ReadonlySet<string>,
 ): SnapshotIndexResult | undefined {
 	const maxPage = Math.ceil(buffer.length / header.pageSize);
 	const visited = new Set<number>();
@@ -951,12 +1092,20 @@ function buildSnapshotIndex(
 			continue;
 		}
 
-		if (!scanLeafIntoIndex(pageData, page.cells, buffer, header, values, counters)) {
+		if (!scanLeafIntoIndex(pageData, page.cells, buffer, header, values, counters, requestedKeys)) {
 			return undefined;
 		}
+		if (hasAllRequestedValues(values, requestedKeys)) break;
 	}
 
 	return { values, scan: toScanHealth(counters) };
+}
+
+function hasAllRequestedValues(
+	values: ReadonlyMap<string, string>,
+	requestedKeys: ReadonlySet<string> | undefined,
+): boolean {
+	return Boolean(requestedKeys?.size) && [...(requestedKeys ?? [])].every((key) => values.has(key));
 }
 
 /**
@@ -971,6 +1120,7 @@ function scanLeafIntoIndex(
 	header: SqliteHeader,
 	index: Map<string, string>,
 	counters: ScanCounters,
+	requestedKeys?: ReadonlySet<string>,
 ): boolean {
 	for (const cell of cells) {
 		const cp = readCellPayload(pageData, cell, buffer, header);
@@ -989,7 +1139,7 @@ function scanLeafIntoIndex(
 		} catch {
 			return false;
 		}
-		if (value !== undefined) {
+		if (value !== undefined && (!requestedKeys || requestedKeys.has(cellKey))) {
 			index.set(cellKey, value);
 		}
 	}

@@ -146,6 +146,18 @@ describe("state database watcher", () => {
 		expect(resolveActiveModelFromCopilotState).toHaveBeenCalled();
 	});
 
+	it("does not publish a model change for transient diagnostics", async () => {
+		const onChange = vi.fn();
+		(resolveActiveModelFromCopilotState as any).mockImplementation(
+			makeResolve("", "unstable-snapshot"),
+		);
+		createStateDbWatcher(onChange);
+
+		await trigger("change");
+
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
 	it("stops reacting and disposes both watchers after disposal", async () => {
 		const onChange = vi.fn();
 		(resolveActiveModelFromCopilotState as any).mockImplementation(makeResolve("openai/gpt-4o"));

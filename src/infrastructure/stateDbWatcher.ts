@@ -72,8 +72,9 @@ export function createStateDbWatcher(onChange: () => void): vscode.Disposable {
 			try {
 				if (disposed) return;
 				const resolution = await resolveActiveModelFromCopilotState();
-				const currentId = resolution.model?.identifier;
 				logDiagnostic(resolution.diagnostic);
+				if (resolution.diagnostic === "unstable-snapshot") return;
+				const currentId = resolution.model?.identifier;
 				if (currentId !== lastModelId) {
 					lastModelId = currentId;
 					log.info(

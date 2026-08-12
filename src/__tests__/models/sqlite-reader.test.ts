@@ -7,15 +7,22 @@
  * SQLite output rather than hand-crafted fixtures.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+
+vi.mock("node:fs", async () => {
+	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+	return { ...actual, statSync: vi.fn(actual.statSync) };
+});
+
 import {
 	readItemTableValue,
 	readItemTableValueDetailed,
 	readItemTableValueWalAware,
+	readItemTableValuesWalAware,
 	readSnapshotSignature,
 	sameSnapshotSignature,
 	invalidateSchemaCache,
@@ -131,6 +138,31 @@ describe("readItemTableValueWalAware", () => {
 		expect(result.value).toBe("v1");
 	});
 
+	it("returns unstable-snapshot when the database changes during a WAL read", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const db = createStateDb(dbPath, [["k1", "v1"]]);
+		db.exec("PRAGMA journal_mode=WAL");
+		db.prepare("UPDATE ItemTable SET value = ? WHERE key = ?").run("v2", "k1");
+
+		const defaultStat = vi.mocked(fs.statSync).getMockImplementation();
+		let walStatCalls = 0;
+		vi.mocked(fs.statSync).mockImplementation((...args: Parameters<typeof fs.statSync>) => {
+			const stat = defaultStat!(...args);
+			if (!stat) throw new Error("missing test stat");
+			if (String(args[0]).endsWith("-wal")) walStatCalls++;
+			if (walStatCalls === 2) {
+				return { ...stat, mtimeMs: Number(stat.mtimeMs) + 1 } as fs.Stats;
+			}
+			return stat;
+		});
+
+		const result = readItemTableValueWalAware(dbPath, "k1");
+		vi.mocked(fs.statSync).mockImplementation(defaultStat!);
+		db.close();
+
+		expect(result).toEqual({ diagnostic: "unstable-snapshot" });
+	});
+
 	it(
 		"does not publish a value from a capped WAL snapshot as successful",
 		() => {
@@ -204,6 +236,29 @@ describe("identity-aware schema cache", () => {
 });
 
 describe("per-snapshot index", () => {
+	it("resolves the requested model keys as one targeted read", () => {
+		const dbPath = path.join(tmpDir, "state.vscdb");
+		const rows: Array<[string, string]> = [
+			["chat.currentLanguageModel.panel", '{"model":"openai/gpt-4o"}'],
+			["chatModelRecentlyUsed", '["anthropic/claude"]'],
+		];
+		for (let index = 0; index < 500; index++) rows.push([`unrelated-${index}`, `value-${index}`]);
+		createStateDb(dbPath, rows).close();
+
+		const result = readItemTableValuesWalAware(dbPath, [
+			"chat.currentLanguageModel.panel",
+			"chatModelRecentlyUsed",
+		]);
+
+		expect(result.diagnostic).toBe("ok");
+		expect(result.values).toEqual(
+			new Map([
+				["chat.currentLanguageModel.panel", '{"model":"openai/gpt-4o"}'],
+				["chatModelRecentlyUsed", '["anthropic/claude"]'],
+			]),
+		);
+	});
+
 	it("resolves multiple keys from one snapshot without rescanning", () => {
 		const dbPath = path.join(tmpDir, "state.vscdb");
 		const db = createStateDb(dbPath, [

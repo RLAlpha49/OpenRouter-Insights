@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveActiveModelFromCopilotState } from "../../models/stateDbReader";
 import { getLastStateDbDiagnostic } from "../../models/stateDbReader";
+
+const { readSingleMock } = vi.hoisted(() => ({ readSingleMock: vi.fn() }));
 
 vi.mock("node:fs", async () => {
 	const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
@@ -14,7 +16,18 @@ vi.mock("../../models/stateDbLocator", () => ({
 }));
 
 vi.mock("../../models/sqliteReader", () => ({
-	readItemTableValueWalAware: vi.fn(),
+	readItemTableValueWalAware: readSingleMock,
+	readItemTableValuesWalAware: vi.fn((dbPath: string, keys: string[], snapshot?: Buffer) => {
+		const values = new Map<string, string>();
+		let diagnostic = "ok";
+		for (const key of keys) {
+			const result = readSingleMock(dbPath, key, snapshot);
+			diagnostic = result.diagnostic;
+			if (result.value !== undefined) values.set(key, result.value);
+			if (diagnostic !== "ok" && diagnostic !== "no-match") break;
+		}
+		return { values, diagnostic };
+	}),
 	invalidateSchemaCache: vi.fn(),
 	readSnapshotSignature: vi.fn((p: string) => {
 		const stat = fs.statSync(p);
@@ -33,14 +46,25 @@ vi.mock("../../models/sqliteReader", () => ({
 			walSize: 0,
 		};
 	}),
-	sameSnapshotSignature: vi.fn(() => false),
+	sameSnapshotSignature: vi.fn((a, b) => {
+		if (!a || !b) return false;
+		return (
+			a.dbMtimeMs === b.dbMtimeMs &&
+			a.dbSize === b.dbSize &&
+			a.walPresent === b.walPresent &&
+			a.walMtimeMs === b.walMtimeMs &&
+			a.walSize === b.walSize
+		);
+	}),
 }));
 
 import { findStateDb } from "../../models/stateDbLocator";
-import { readItemTableValueWalAware } from "../../models/sqliteReader";
-
 afterEach(() => {
 	vi.clearAllMocks();
+});
+
+beforeEach(() => {
+	readSingleMock.mockReturnValue({ diagnostic: "ok" });
 });
 
 describe("state database reader", () => {
@@ -55,7 +79,7 @@ describe("state database reader", () => {
 		vi.mocked(findStateDb).mockReturnValue(dbPath);
 		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 4 } as fs.Stats);
 		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
-		vi.mocked(readItemTableValueWalAware).mockReturnValue({
+		readSingleMock.mockReturnValue({
 			value: "openai/gpt-4o",
 			diagnostic: "ok",
 		});
@@ -74,7 +98,7 @@ describe("state database reader", () => {
 		vi.mocked(findStateDb).mockReturnValue(dbPath);
 		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 3, size: 4 } as fs.Stats);
 		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
-		vi.mocked(readItemTableValueWalAware)
+		readSingleMock
 			.mockReturnValueOnce({ value: undefined, diagnostic: "ok" })
 			.mockReturnValueOnce({ value: '["anthropic/claude"]', diagnostic: "ok" });
 
@@ -88,7 +112,7 @@ describe("state database reader", () => {
 		vi.mocked(findStateDb).mockReturnValue(dbPath);
 		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 2, size: 4 } as fs.Stats);
 		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
-		vi.mocked(readItemTableValueWalAware).mockImplementation(() => {
+		readSingleMock.mockImplementation(() => {
 			throw new Error("invalid database");
 		});
 
@@ -125,12 +149,27 @@ describe("state database reader", () => {
 		vi.mocked(findStateDb).mockReturnValue(dbPath);
 		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 10, size: 4 } as fs.Stats);
 		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
-		vi.mocked(readItemTableValueWalAware).mockReturnValue({
+		readSingleMock.mockReturnValue({
 			value: '{"model":"openai/gpt-4o"}',
 			diagnostic: "wal-incomplete",
 		});
 
 		expect(await resolveActiveModelFromCopilotState()).toEqual({ diagnostic: "wal-incomplete" });
+	});
+
+	it("retries an unstable snapshot before publishing the resolved model", async () => {
+		const dbPath = path.join(process.cwd(), "unstable-state.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 10, size: 4 } as fs.Stats);
+		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
+		readSingleMock
+			.mockReturnValueOnce({ diagnostic: "unstable-snapshot" })
+			.mockReturnValueOnce({ value: "openai/gpt-4o", diagnostic: "ok" });
+
+		const result = await resolveActiveModelFromCopilotState();
+
+		expect(result.model?.identifier).toBe("openai/gpt-4o");
+		expect(readSingleMock).toHaveBeenCalledTimes(3);
 	});
 
 	it("records a bounded state-db boundary diagnostic when a sink is attached", async () => {

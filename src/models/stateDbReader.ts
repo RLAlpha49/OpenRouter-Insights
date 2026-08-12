@@ -11,7 +11,7 @@ import { findStateDb } from "./stateDbLocator";
 import { parseModelIdentifier, parseRecentModel } from "./sqlModelParser";
 import { deriveName } from "./modelNameDeriver";
 import {
-	readItemTableValueWalAware,
+	readItemTableValuesWalAware,
 	readSnapshotSignature,
 	sameSnapshotSignature,
 	invalidateSchemaCache,
@@ -98,6 +98,19 @@ export class StateDbReader {
 	}
 
 	async resolve(logger?: StateReaderLogger): Promise<StateDbResolution> {
+		for (let attempt = 0; attempt < SNAPSHOT_RETRIES; attempt++) {
+			const result = await this._resolveOnce(logger);
+			if (result.diagnostic !== "unstable-snapshot") return result;
+		}
+
+		this._lastDiagnostic = "busy";
+		this._lastResult = undefined;
+		this._lastResultAt = 0;
+		this._record("busy");
+		return { diagnostic: "busy" };
+	}
+
+	private async _resolveOnce(logger?: StateReaderLogger): Promise<StateDbResolution> {
 		const dbPath = findStateDb();
 		logger?.("[StateDbReader] dbPath=" + String(dbPath));
 		if (!dbPath) {
@@ -125,7 +138,6 @@ export class StateDbReader {
 				return { model: this._lastResult, diagnostic: this._lastDiagnostic };
 			}
 			if (!sameSnapshotSignature(this._lastSignature, signature)) invalidateSchemaCache();
-			this._lastSignature = signature;
 		} catch (err) {
 			const errMsg = formatError(err);
 			this._lastDiagnostic = "unreadable";
@@ -149,12 +161,16 @@ export class StateDbReader {
 				return { diagnostic: "busy" };
 			}
 
-			const panelResult = readItemTableValueWalAware(
+			const valuesResult = readItemTableValuesWalAware(
 				dbPath,
-				"chat.currentLanguageModel.panel",
+				["chat.currentLanguageModel.panel", "chatModelRecentlyUsed"],
 				snapshot,
 			);
-			this._lastDiagnostic = panelResult.diagnostic;
+			this._lastDiagnostic = valuesResult.diagnostic;
+			const panelResult = {
+				value: valuesResult.values.get("chat.currentLanguageModel.panel"),
+				diagnostic: valuesResult.diagnostic,
+			};
 			const panelId = parseModelIdentifier(panelResult.value);
 			logger?.(`[StateDbReader] panel model id = ${panelId ?? "undefined"}`);
 			if (!canContinueAfter(panelResult.diagnostic)) {
@@ -164,20 +180,30 @@ export class StateDbReader {
 				return { diagnostic: panelResult.diagnostic };
 			}
 
-			let recentId: string | undefined;
-			if (!panelId) {
-				const recentResult = readItemTableValueWalAware(dbPath, "chatModelRecentlyUsed", snapshot);
-				this._lastDiagnostic = recentResult.diagnostic;
-				if (!canContinueAfter(recentResult.diagnostic)) {
-					this._lastResult = undefined;
-					this._lastResultAt = 0;
-					this._record(recentResult.diagnostic);
-					return { diagnostic: recentResult.diagnostic };
-				}
-				recentId = parseRecentModel(recentResult.value, logger);
-			}
+			const recentId = panelId
+				? undefined
+				: parseRecentModel(valuesResult.values.get("chatModelRecentlyUsed"), logger);
 
 			const identifier = panelId ?? recentId;
+			let finalSignature: SnapshotSignature;
+			try {
+				finalSignature = readSnapshotSignature(dbPath);
+			} catch {
+				this._lastDiagnostic = "busy";
+				this._lastResult = undefined;
+				this._lastResultAt = 0;
+				this._record("busy");
+				return { diagnostic: "busy" };
+			}
+			if (!sameSnapshotSignature(signature, finalSignature)) {
+				this._lastDiagnostic = "unstable-snapshot";
+				this._lastResult = undefined;
+				this._lastResultAt = 0;
+				this._record("unstable-snapshot");
+				return { diagnostic: "unstable-snapshot" };
+			}
+			this._lastSignature = finalSignature;
+
 			if (!identifier) {
 				this._lastResult = undefined;
 				this._lastResultAt = Date.now();
