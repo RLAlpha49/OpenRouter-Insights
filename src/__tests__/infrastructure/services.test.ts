@@ -143,6 +143,36 @@ describe("FeatureRegistry and command registration", () => {
 		expect(diagnostics.recordFailure).toHaveBeenCalledWith("command", expect.any(Error));
 		disposable.dispose();
 	});
+
+	it("captures synchronous command argument-adapter failures", async () => {
+		const callbacks = new Map<string, (..._args: unknown[]) => unknown>();
+		(vscode.commands as any).registerCommand = vi.fn(
+			(id: string, callback: (..._args: unknown[]) => unknown) => {
+				callbacks.set(id, callback);
+				return { dispose: () => callbacks.delete(id) };
+			},
+		);
+		const error = new Error("invalid command argument");
+		const command = {
+			id: "openrouter-insights.refreshPricing",
+			execute: vi.fn(async () => {}),
+			argAdapter: vi.fn(() => {
+				throw error;
+			}),
+		};
+		const diagnostics = { recordFailure: vi.fn() };
+		const svc = {
+			commands: new Map([[command.id, command]]),
+			features: { shouldRegisterCommand: () => true },
+			diagnostics,
+		} as any;
+		const disposable = registerCommands({} as any, svc);
+
+		await expect(callbacks.get(command.id)?.()).resolves.toBeUndefined();
+		expect(diagnostics.recordFailure).toHaveBeenCalledWith("command", error);
+		expect(command.execute).not.toHaveBeenCalled();
+		disposable.dispose();
+	});
 });
 
 describe("service composition", () => {

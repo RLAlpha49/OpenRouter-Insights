@@ -114,7 +114,12 @@ export function registerCommands(
 				return undefined;
 			}
 			const adapter = cmd.argAdapter ?? ((raw: readonly unknown[]) => [...raw]);
-			const typedArgs = adapter(args);
+			let typedArgs: readonly unknown[];
+			try {
+				typedArgs = adapter(args);
+			} catch (error) {
+				return presentCommandError(cmd.id, error, svc.diagnostics);
+			}
 			return (cmd.execute as (..._args: unknown[]) => Promise<void>)(...typedArgs).catch(
 				(error: unknown) => presentCommandError(cmd.id, error, svc.diagnostics),
 			);
