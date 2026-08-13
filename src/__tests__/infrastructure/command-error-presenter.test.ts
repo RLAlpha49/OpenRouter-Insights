@@ -7,7 +7,10 @@ import { RuntimeDiagnostics } from "../../infrastructure/runtimeDiagnostics";
 describe("command error classification", () => {
 	it("treats cancellation as silent", () => {
 		expect(classifyCommandError({ cancelled: true })).toBe("cancelled");
-		expect(classifyCommandError(new Error("operation was aborted"))).toBe("cancelled");
+		expect(classifyCommandError(new DOMException("operation was aborted", "AbortError"))).toBe(
+			"cancelled",
+		);
+		expect(classifyCommandError(new Error("operation was aborted"))).toBe("generic");
 	});
 
 	it("maps structured OpenRouter error classes to recovery categories", () => {

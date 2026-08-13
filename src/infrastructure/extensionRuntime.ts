@@ -14,6 +14,7 @@ import type { CommandServices, RuntimeServices } from "./composition/contracts";
 import { registerModelHoverProvider } from "../ui/webviews/modelHoverProvider";
 import { computeBlendedRate } from "../api/clients/pricingService";
 import { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 
 /**
  * Owns every activation-scoped registration and converges feature state
@@ -38,7 +39,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 
 	private async runInBackground(label: string, work: () => Promise<unknown>): Promise<void> {
 		await work().catch((error: unknown) => {
-			if ((error as { cancelled?: boolean }).cancelled) return;
+			if (isCancellationError(error)) return;
 			this.diagnostics.recordFailure("background", error);
 			log.errorFields(
 				{ boundary: "background", operation: label },
@@ -170,7 +171,9 @@ export class ExtensionRuntime implements vscode.Disposable {
 			this.config.isFeatureEnabled("usage") &&
 			(this.config.usageStatusBarEnabled || this.config.usageShowDashboard)
 		) {
-			await this.runInBackground("usage refresh", () => this._services.doUsageRefresh());
+			await this.runInBackground("usage refresh", () =>
+				this._services.doUsageRefresh("activation", "baseline"),
+			);
 		}
 		if (this.config.isFeatureEnabled("usage")) {
 			const hasKey = await this._services.secrets.hasKey();
@@ -211,7 +214,7 @@ export class ExtensionRuntime implements vscode.Disposable {
 						() =>
 							void observeRefresh({ label: "usage", eventBus: this._services.eventBus }, () =>
 								this.runInBackground("usage refresh", () =>
-									this._services.doUsageRefresh("scheduled"),
+									this._services.doUsageRefresh("scheduled", "baseline"),
 								),
 							),
 					);
@@ -233,7 +236,9 @@ export class ExtensionRuntime implements vscode.Disposable {
 						this.started &&
 						(this.config.usageStatusBarEnabled || this.config.usageShowDashboard)
 					) {
-						this.runInBackground("usage refresh", () => this._services.doUsageRefresh());
+						this.runInBackground("usage refresh", () =>
+							this._services.doUsageRefresh("activation", "baseline"),
+						);
 					}
 				},
 				deactivated: () => {

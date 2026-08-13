@@ -67,6 +67,7 @@ export interface CommandServiceDependencies {
 	readonly features: CommandGate;
 	readonly doRefresh: () => Promise<void>;
 	readonly doUsageRefresh: () => Promise<void>;
+	readonly loadUsageDetails: () => Promise<void>;
 	readonly openExpandedDashboard: () => vscode.WebviewPanel;
 }
 
@@ -109,7 +110,7 @@ export function createCommandServices(
 	add(new RemoveApiKeyCommand(deps.secrets, () => deps.usageRefreshUseCase.clear()));
 	add(new RefreshUsageCommand(deps.usageRefreshUseCase));
 	add(new LoadUsageDetailsCommand(deps.usageRefreshUseCase));
-	add(new OpenUsageDashboardCommand());
+	add(new OpenUsageDashboardCommand(deps.loadUsageDetails));
 	add(new OpenExpandedDashboardCommand(deps.openExpandedDashboard));
 	add(new SelectUsageKeyCommand((keyHash) => deps.usageRefreshUseCase.executeWithKey(keyHash)));
 	add(new CreateApiKeyCommand(deps.secrets, deps.doUsageRefresh, deps.httpClient));

@@ -23,7 +23,7 @@ import type { UsageDashboardProvider } from "../ui/webviews/usageDashboard";
 import type { ModelPickerEnhancer } from "../ui/model-browser/modelPickerEnhancer";
 import type { RefreshUseCase } from "../use-cases/refreshUseCase";
 import type { StatusBarUpdateUseCase } from "../use-cases/statusBarUpdateUseCase";
-import type { UsageRefreshUseCase } from "../use-cases/usageRefreshUseCase";
+import type { UsageRefreshIntent, UsageRefreshUseCase } from "../use-cases/usageRefreshUseCase";
 import { log } from "./logger";
 import { EventBus } from "./eventBus";
 import { FeatureRegistry } from "./featureRegistry";
@@ -72,7 +72,7 @@ export interface ServiceContainer extends vscode.Disposable {
 	/** Trigger a full pricing refresh, then update the status bar. */
 	readonly doRefresh: () => Promise<void>;
 	/** Trigger a usage refresh. */
-	readonly doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
+	readonly doUsageRefresh: (_reason?: RefreshReason, _intent?: UsageRefreshIntent) => Promise<void>;
 	/** Show a loading indicator in the status bar (idempotent). */
 	readonly showLoading: () => void;
 	/** Clear the loading indicator on the status bar. */
@@ -128,9 +128,12 @@ export function createServices(context: vscode.ExtensionContext): ServiceContain
 			});
 		};
 
-		const doUsageRefresh = async (reason: RefreshReason = "user") => {
+		const doUsageRefresh = async (
+			reason: RefreshReason = "user",
+			intent: UsageRefreshIntent = "detailed",
+		) => {
 			await refreshCoordinator.acquire("usage", reason, (ctx) =>
-				usage.usageRefreshUseCase.execute(undefined, ctx),
+				usage.usageRefreshUseCase.execute(undefined, ctx, intent),
 			);
 		};
 
@@ -147,6 +150,7 @@ export function createServices(context: vscode.ExtensionContext): ServiceContain
 			features,
 			doRefresh,
 			doUsageRefresh: () => doUsageRefresh(),
+			loadUsageDetails: () => doUsageRefresh("user", "detailed"),
 			openExpandedDashboard: () => usage.usageDashboard.openExpandedPanel(),
 		});
 

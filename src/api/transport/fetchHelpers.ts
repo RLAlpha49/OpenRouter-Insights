@@ -34,6 +34,21 @@ export interface RequestObservation {
 	outcome: RequestOutcome;
 	retries: number;
 	cancelled: boolean;
+	observedAt?: number;
+	refreshId?: number;
+}
+
+/** Return true when an error represents intentional cancellation. */
+export function isCancellationError(error: unknown, signal?: AbortSignal): boolean {
+	if (signal?.aborted) return true;
+	if (error instanceof OpenRouterHttpError && error.aborted) return true;
+	if (error instanceof DOMException && error.name === "AbortError") return true;
+	if (error instanceof Error && error.name === "AbortError") return true;
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { cancelled?: unknown }).cancelled === true
+	);
 }
 
 /** Map a structured error class to its retry category. */
@@ -322,6 +337,8 @@ export async function fetchWithRetry<T>(
 					outcome: "success",
 					retries: attempt - 1,
 					cancelled: false,
+					observedAt: clock.now(),
+					refreshId: getRefreshId(options.signal),
 				});
 			}
 			return attemptResult.value as T;
@@ -344,6 +361,8 @@ export async function fetchWithRetry<T>(
 		outcome,
 		retries: attempts - 1,
 		cancelled,
+		observedAt: clock.now(),
+		refreshId: getRefreshId(options.signal),
 	});
 
 	const detail = lastError?.message ?? "unknown error";
@@ -366,6 +385,11 @@ export async function fetchWithRetry<T>(
 					: ""),
 		},
 	});
+}
+
+function getRefreshId(signal: AbortSignal | undefined): number | undefined {
+	const value = (signal as (AbortSignal & { refreshId?: unknown }) | undefined)?.refreshId;
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /** Map a final terminal error (or cancellation) to a bounded outcome dimension. */

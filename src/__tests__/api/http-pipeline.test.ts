@@ -196,15 +196,10 @@ describe("withEndpointPolicy", () => {
 describe("pipeline composition", () => {
 	it("preserves caller headers over defaults and records the redacted request", async () => {
 		const { client, requests } = recordingClient(() => new Response("{}", { status: 200 }));
-		const recorded: string[] = [];
-		const pipeline = new HttpPipeline(
-			client,
-			[
-				withDefaultHeaders({ Accept: "application/json", "Accept-Encoding": "gzip" }),
-				withAuth(async () => "sk-or-v1-rotating-key-12345678901234567890"),
-			],
-			{ recordRequest: (endpoint) => recorded.push(endpoint) },
-		);
+		const pipeline = new HttpPipeline(client, [
+			withDefaultHeaders({ Accept: "application/json", "Accept-Encoding": "gzip" }),
+			withAuth(async () => "sk-or-v1-rotating-key-12345678901234567890"),
+		]);
 
 		await pipeline.fetch("https://openrouter.ai/api/v1/models?api_key=secret-value", {
 			headers: { Accept: "text/plain" },
@@ -214,8 +209,6 @@ describe("pipeline composition", () => {
 		expect(headers.get("accept")).toBe("text/plain");
 		expect(headers.get("accept-encoding")).toBe("gzip");
 		expect(headers.get("authorization")).toBe("Bearer sk-or-v1-rotating-key-12345678901234567890");
-		expect(recorded).toHaveLength(1);
-		expect(recorded[0]).not.toContain("secret-value");
 	});
 
 	it("skips the Authorization header when the key provider returns nothing", async () => {
@@ -350,20 +343,20 @@ describe("credential redaction in diagnostics", () => {
 		expect(message).toContain("REDACTED");
 	});
 
-	it("redacts credentials from request diagnostics recorded by the pipeline", async () => {
-		const recorded: string[] = [];
+	it("does not expose request credentials through a removed diagnostics hook", async () => {
+		let calls = 0;
 		const client: HttpClient = {
-			fetch: async () => new Response("{}", { status: 200 }),
+			fetch: async () => {
+				calls++;
+				return new Response("{}", { status: 200 });
+			},
 		};
-		const pipeline = new HttpPipeline(client, [], {
-			recordRequest: (url) => recorded.push(url),
-		});
+		const pipeline = new HttpPipeline(client, []);
 
-		const secret = "sk-or-v1-SECRETS";
-		await pipeline.fetch(`https://openrouter.ai/api/v1/key?api_key=${secret}`, {
+		await pipeline.fetch("https://openrouter.ai/api/v1/key?api_key=sk-or-v1-SECRETS", {
 			headers: { Authorization: "Bearer sk-or-v1-OTHERSECRET" },
 		});
 
-		expect(recorded[0]).not.toContain(secret);
+		expect(calls).toBe(1);
 	});
 });

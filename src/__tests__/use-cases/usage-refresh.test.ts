@@ -316,7 +316,7 @@ describe("UsageRefreshUseCase", () => {
 			secrets as any,
 			statusBar as any,
 			dashboard as any,
-			createFakeReadonlyConfig(),
+			createFakeReadonlyConfig({ usageAnalyticsEnabled: true }),
 		);
 
 		await useCase.execute();
@@ -331,6 +331,29 @@ describe("UsageRefreshUseCase", () => {
 			expect.any(Function),
 		);
 		expect(dashboard.renderUsage).toHaveBeenLastCalledWith(details);
+	});
+
+	it("skips dashboard details for a baseline refresh", async () => {
+		secrets._seededKey("sk-or-test");
+		const baseline = createManagementUsageStats();
+		vi.mocked(fetchUsageStats).mockResolvedValue(baseline);
+
+		const useCase = new UsageRefreshUseCase(
+			cache,
+			secrets as any,
+			statusBar as any,
+			dashboard as any,
+			createFakeReadonlyConfig(),
+		);
+
+		await useCase.execute(undefined, undefined, "baseline");
+
+		expect(fetchUsageDetails).not.toHaveBeenCalled();
+		expect(dashboard.renderUsage).toHaveBeenLastCalledWith(
+			expect.not.objectContaining({
+				detailState: expect.objectContaining({ status: "loading" }),
+			}),
+		);
 	});
 
 	it("renders detail loading state before initial management details finish", async () => {

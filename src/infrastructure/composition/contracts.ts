@@ -14,6 +14,7 @@ import type { EventBus } from "../eventBus";
 import type { RefreshReason } from "../refreshContext";
 import type { RuntimeDiagnostics } from "../runtimeDiagnostics";
 import type { ICommand } from "../commands";
+import type { UsageRefreshIntent } from "../../use-cases/usageRefreshUseCase";
 
 /** A view whose visibility follows a feature flag or setting. */
 export interface ToggleableView {
@@ -60,7 +61,7 @@ export interface RuntimeServices {
 	readonly usageRefreshUseCase: UsageDetailRefresh;
 	readonly eventBus: EventBus;
 	readonly doRefresh: () => Promise<void>;
-	readonly doUsageRefresh: (_reason?: RefreshReason) => Promise<void>;
+	readonly doUsageRefresh: (_reason?: RefreshReason, _intent?: UsageRefreshIntent) => Promise<void>;
 	readonly diagnostics: RuntimeDiagnostics;
 }
 

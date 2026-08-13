@@ -12,6 +12,7 @@ import { PricingFetcher } from "../api/clients/pricingService";
 import { log, formatError, formatErrorBrief } from "../infrastructure/logger";
 import type { ReadonlyConfig } from "../infrastructure/config";
 import type { RefreshContext } from "../infrastructure/refreshContext";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 import type { HttpClient } from "../api/transport/httpClient";
 import type { EventBus } from "../infrastructure/eventBus";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
@@ -75,7 +76,7 @@ export class RefreshUseCase {
 			this._presenter?.pricingUpdated(data.models.length);
 		} catch (err) {
 			// Cancellation is non-error control flow — do not surface it.
-			if (ctx?.isCancelled() || (err as { cancelled?: boolean }).cancelled) {
+			if (isCancellationError(err, ctx?.signal)) {
 				log.info("RefreshUseCase: refresh cancelled");
 				return;
 			}

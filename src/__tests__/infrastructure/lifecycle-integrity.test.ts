@@ -74,7 +74,10 @@ describe("lifecycle integrity", () => {
 		const model = new ModelPollingService(vi.fn());
 		const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
 		const usageTick = vi.fn();
-		const usage = new UsagePollingService(usageTick);
+		const usage = new UsagePollingService(usageTick, {
+			usageBackgroundPollingEnabled: true,
+			usageAutoRefreshInterval: 300,
+		});
 		const refresh = new RefreshScheduler(vi.fn());
 
 		expect(setIntervalSpy).toHaveBeenCalledTimes(1);

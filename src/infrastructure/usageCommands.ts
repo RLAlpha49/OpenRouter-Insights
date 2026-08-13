@@ -118,7 +118,10 @@ export class OpenUsageDashboardCommand implements ICommand {
 		description: "Show detailed usage and balance",
 	};
 
+	constructor(private readonly _loadDetails?: () => Promise<void>) {}
+
 	async execute(): Promise<void> {
+		await this._loadDetails?.();
 		await vscode.commands.executeCommand("workbench.view.extension.openrouter-insights-usage");
 	}
 }

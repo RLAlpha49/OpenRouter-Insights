@@ -10,6 +10,7 @@ import * as vscode from "vscode";
 import type { CommandServices } from "./services";
 import { formatErrorBrief, log } from "./logger";
 import type { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 
 /**
  * Classify a command failure into a user-facing recovery category.
@@ -46,8 +47,7 @@ const COMMAND_RECOVERY: Partial<
 };
 
 export function classifyCommandError(error: unknown): CommandErrorKind {
-	if ((error as { cancelled?: boolean } | null)?.cancelled === true) return "cancelled";
-	if (error instanceof Error && /cancelled|abort/i.test(error.message)) return "cancelled";
+	if (isCancellationError(error)) return "cancelled";
 	const err = error as { errorClass?: string; status?: number; apiMessage?: string } | null;
 	if (err?.errorClass === "auth") return "auth";
 	if (err?.errorClass === "permission") return "permission";

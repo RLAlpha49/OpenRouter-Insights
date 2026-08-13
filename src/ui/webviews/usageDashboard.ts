@@ -187,13 +187,10 @@ function buildAnalyticsSection(
 	if (usage.detailState?.status === "loading" && !analytics) {
 		return `<div class="or-card"><div class="or-section-head"><h3>Spend by Model</h3></div><div class="or-activity-empty" role="status" aria-live="polite"><div class="or-spinner" aria-hidden="true"></div><p class="or-info">Loading spend by model…</p></div></div>`;
 	}
-	if (!ConfigService.instance.usageAnalyticsEnabled || !analytics) {
+	if (!analytics) {
 		let message =
 			"Per-model spend has not been loaded yet. Refresh the dashboard to request detailed analytics.";
-		if (
-			!ConfigService.instance.usageAnalyticsEnabled ||
-			usage.analyticsUnavailableReason === "disabled"
-		) {
+		if (usage.analyticsUnavailableReason === "disabled") {
 			message =
 				"Per-model spend is turned off. Turn on openrouterInsights.usage.analytics.enabled to include analytics in detailed refreshes.";
 		} else if (usage.analyticsUnavailableReason === "managementKeyRequired") {

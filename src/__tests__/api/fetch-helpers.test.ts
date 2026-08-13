@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { classifyError, fetchWithRetry, sleep } from "../../api/transport/fetchHelpers";
+import {
+	classifyError,
+	fetchWithRetry,
+	isCancellationError,
+	sleep,
+} from "../../api/transport/fetchHelpers";
+import { OpenRouterHttpError } from "../../api/transport/openRouterError";
 
 describe("sleep", () => {
 	it("resolves after specified time", async () => {
@@ -14,6 +20,18 @@ describe("sleep", () => {
 });
 
 describe("fetchWithRetry", () => {
+	it.each([
+		[{ cancelled: true }],
+		[new DOMException("cancelled", "AbortError")],
+		[new OpenRouterHttpError({ label: "test", aborted: true })],
+	])("classifies %o as cancellation", (error) => {
+		expect(isCancellationError(error)).toBe(true);
+	});
+
+	it("does not classify an ordinary error as cancellation", () => {
+		expect(isCancellationError(new Error("abort failed"))).toBe(false);
+	});
+
 	it("classifies AbortError as an aborted transport failure", () => {
 		const result = classifyError(new DOMException("The operation was aborted", "AbortError"));
 

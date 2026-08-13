@@ -118,6 +118,19 @@ describe("usage commands", () => {
 		expect(openExpanded).toHaveBeenCalledOnce();
 	});
 
+	it("loads detailed usage when opening the dashboard", async () => {
+		const refreshDetails = vi.fn(async () => {});
+		const executeCommand = vi.spyOn(vscode.commands, "executeCommand");
+
+		await new OpenUsageDashboardCommand(refreshDetails).execute();
+
+		expect(refreshDetails).toHaveBeenCalledOnce();
+		expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+			"workbench.view.extension.openrouter-insights-usage",
+		);
+		executeCommand.mockRestore();
+	});
+
 	it("updates managed keys through API-backed flows", async () => {
 		const secret = secrets();
 		const refresh = vi.fn(async () => {});

@@ -11,6 +11,7 @@
  */
 
 import type { EventBus } from "./eventBus";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 
 export type RefreshOutcome = "completed" | "failed" | "skipped" | "cancelled";
 
@@ -48,7 +49,7 @@ export async function observeRefresh<T>(
 		});
 		return result;
 	} catch (error) {
-		const cancelled = (error as { cancelled?: boolean } | null)?.cancelled === true;
+		const cancelled = isCancellationError(error);
 		eventBus?.emit("refreshTerminal", {
 			label,
 			outcome: cancelled ? "cancelled" : "failed",

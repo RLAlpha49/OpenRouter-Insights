@@ -52,17 +52,13 @@ export function createApiServices(
 		}),
 	);
 
-	const httpPipeline = new HttpPipeline(
-		defaultHttpClient,
-		[
-			withLogging(log),
-			withEndpointPolicy({
-				apiKeyProvider: () => secrets.get(),
-				managementKeyProvider: () => secrets.get(),
-			}),
-		],
-		diagnostics,
-	);
+	const httpPipeline = new HttpPipeline(defaultHttpClient, [
+		withLogging(log),
+		withEndpointPolicy({
+			apiKeyProvider: () => secrets.get(),
+			managementKeyProvider: () => secrets.get(),
+		}),
+	]);
 
 	return { diagnostics, cache, usageCache, secrets, httpPipeline };
 }

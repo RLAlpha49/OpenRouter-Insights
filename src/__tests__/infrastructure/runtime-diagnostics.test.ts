@@ -5,7 +5,13 @@ describe("RuntimeDiagnostics", () => {
 	it("keeps bounded counters and redacted recent failures in process-local memory", () => {
 		const diagnostics = new RuntimeDiagnostics({ maxRecentFailures: 2 });
 
-		diagnostics.recordRequest("https://openrouter.ai/api/v1/models?api_key=secret");
+		diagnostics.recordRequestObservation({
+			endpoint: "https://openrouter.ai/api/v1/models?api_key=secret",
+			durationMs: 1,
+			outcome: "success",
+			retries: 0,
+			cancelled: false,
+		});
 		diagnostics.recordCacheHit();
 		diagnostics.recordCacheMiss();
 		diagnostics.recordRefreshStarted("pricing");
@@ -18,10 +24,18 @@ describe("RuntimeDiagnostics", () => {
 			requests: {
 				total: 1,
 				byEndpoint: { "https://openrouter.ai/api/v1/models": 1 },
-				observations: [],
+				observations: [
+					{
+						endpoint: "https://openrouter.ai/api/v1/models",
+						durationMs: 1,
+						outcome: "success",
+						retries: 0,
+						cancelled: false,
+					},
+				],
 			},
 			cache: { hits: 1, misses: 1, writes: 0 },
-			refresh: { started: 1, completed: 1, failed: 0, deduplicated: 0 },
+			refresh: { started: 1, completed: 1, failed: 0, cancelled: 0, deduplicated: 0 },
 			failures: { command: 1, config: 1, background: 1, activation: 0 },
 			recentFailures: [
 				{ kind: "config", message: "second failure" },
@@ -47,6 +61,27 @@ describe("RuntimeDiagnostics", () => {
 		expect(diagnostics.snapshot().refresh.deduplicated).toBe(1);
 	});
 
+	it("counts one completed logical request and retains bounded correlation metadata", () => {
+		const diagnostics = new RuntimeDiagnostics();
+		diagnostics.recordRequestObservation({
+			endpoint: "models.list",
+			durationMs: 12,
+			outcome: "success",
+			retries: 2,
+			cancelled: false,
+			observedAt: 1_700_000_000_000,
+			refreshId: 42,
+		});
+
+		const snapshot = diagnostics.snapshot();
+		expect(snapshot.requests.total).toBe(1);
+		expect(snapshot.requests.byEndpoint).toEqual({ "models.list": 1 });
+		expect(snapshot.requests.observations[0]).toMatchObject({
+			observedAt: 1_700_000_000_000,
+			refreshId: 42,
+		});
+	});
+
 	it("records bounded request observations with outcome dimensions and drops query strings", () => {
 		const diagnostics = new RuntimeDiagnostics({ maxObservations: 2 });
 		diagnostics.recordRequestObservation({
@@ -55,6 +90,8 @@ describe("RuntimeDiagnostics", () => {
 			outcome: "success",
 			retries: 2,
 			cancelled: false,
+			observedAt: 1_700_000_000_000,
+			refreshId: 123,
 		});
 		diagnostics.recordRequestObservation({
 			endpoint: "keys.current",
@@ -62,6 +99,7 @@ describe("RuntimeDiagnostics", () => {
 			outcome: "rate-limited",
 			retries: 3,
 			cancelled: false,
+			observedAt: 1_700_000_000_001,
 		});
 		// A third observation past the cap evicts the oldest (models.list).
 		diagnostics.recordRequestObservation({
@@ -70,6 +108,7 @@ describe("RuntimeDiagnostics", () => {
 			outcome: "success",
 			retries: 0,
 			cancelled: false,
+			observedAt: 1_700_000_000_002,
 		});
 
 		const snap = diagnostics.snapshot();
@@ -110,11 +149,18 @@ describe("RuntimeDiagnostics", () => {
 			sizeBucket: "2.4MB",
 			fallback: "preserved-previous",
 		});
+		expect(boundary[0].observedAt).toEqual(expect.any(Number));
 	});
 
 	it("renders a redacted support report without secrets", () => {
 		const diagnostics = new RuntimeDiagnostics();
-		diagnostics.recordRequest("models.list");
+		diagnostics.recordRequestObservation({
+			endpoint: "models.list",
+			durationMs: 1,
+			outcome: "success",
+			retries: 0,
+			cancelled: false,
+		});
 		diagnostics.recordCacheWrite();
 		diagnostics.recordFailure("command", "Bearer sk-or-v1-secret-token");
 		diagnostics.recordBoundary({ kind: "cache", operation: "set", diagnostic: "written" });

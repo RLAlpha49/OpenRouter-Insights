@@ -24,8 +24,11 @@ import type { ApiLogger } from "../api/logger";
 import type { UsageStats } from "../types-usage";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
 import type { RequestObservation } from "../api/transport/fetchHelpers";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 import { fetchUsageDetails } from "../api/clients/usageDetailsService";
 import type { UsageDashboardPresenter, UsageStatusPresenter } from "./ports";
+
+export type UsageRefreshIntent = "baseline" | "detailed";
 
 export class UsageRefreshUseCase {
 	private _pending: Promise<void> | undefined;
@@ -69,7 +72,11 @@ export class UsageRefreshUseCase {
 	 * @param keyHash  For management keys: the hash of the key to show usage for.
 	 * @param ctx      Optional refresh context — cancellation suppresses publish.
 	 */
-	async execute(keyHash?: string, ctx?: RefreshContext): Promise<void> {
+	async execute(
+		keyHash?: string,
+		ctx?: RefreshContext,
+		intent: UsageRefreshIntent = "detailed",
+	): Promise<void> {
 		if (keyHash !== undefined) {
 			this._selectedKeyHash = keyHash;
 		}
@@ -80,7 +87,7 @@ export class UsageRefreshUseCase {
 			return this._pending;
 		}
 
-		const operation = this._executeInternal(ctx, generation);
+		const operation = this._executeInternal(ctx, generation, intent);
 		this._pending = operation;
 		this._pendingContext = ctx;
 		try {
@@ -98,6 +105,7 @@ export class UsageRefreshUseCase {
 	private async _executeInternal(
 		ctx?: RefreshContext,
 		generation = this._generation,
+		intent: UsageRefreshIntent = "detailed",
 	): Promise<void> {
 		try {
 			this._applyClickAction();
@@ -134,7 +142,7 @@ export class UsageRefreshUseCase {
 			}
 			const publishedUsage = mergeBaselineDetails(usage, this._cache.get());
 			const loadingUsage =
-				publishedUsage.mode === "management"
+				publishedUsage.mode === "management" && intent === "detailed"
 					? withDetailLoadingState(publishedUsage)
 					: publishedUsage;
 			this._cache.set(loadingUsage);
@@ -154,7 +162,7 @@ export class UsageRefreshUseCase {
 
 			this._statusBar.showUsage(loadingUsage, this._config.usageLowBalanceThreshold);
 			this._dashboard.renderUsage(loadingUsage);
-			if (loadingUsage.mode === "management") {
+			if (loadingUsage.mode === "management" && intent === "detailed") {
 				// The baseline response does not contain activity or analytics. Load
 				// those details after publishing the baseline so every refresh keeps
 				// the dashboard's detailed sections populated.
@@ -165,7 +173,7 @@ export class UsageRefreshUseCase {
 			const renderedUsage = this._cache.get() ?? publishedUsage;
 			this._dashboard.renderUsage(renderedUsage);
 		} catch (err) {
-			if (ctx?.isCancelled() || (err as { cancelled?: boolean }).cancelled) {
+			if (isCancellationError(err, ctx?.signal)) {
 				log.info("UsageRefreshUseCase: refresh cancelled");
 				return;
 			}

@@ -10,7 +10,13 @@ describe("ShowRuntimeDiagnosticsCommand", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		diagnostics.recordRequest("models.list");
+		diagnostics.recordRequestObservation({
+			endpoint: "models.list",
+			durationMs: 1,
+			outcome: "success",
+			retries: 0,
+			cancelled: false,
+		});
 		command = new ShowRuntimeDiagnosticsCommand(diagnostics);
 	});
 

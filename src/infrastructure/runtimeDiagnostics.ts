@@ -20,6 +20,8 @@ export interface RequestObservation {
 	outcome: RequestOutcome;
 	retries: number;
 	cancelled: boolean;
+	observedAt?: number;
+	refreshId?: number;
 }
 
 /** Bounded diagnostic context for a state-DB or cache boundary operation. */
@@ -32,6 +34,8 @@ export interface BoundaryDiagnostic {
 	sizeBucket?: string;
 	/** Optional fallback path taken, e.g. `stale-cache`, `preserved-previous`. */
 	fallback?: string;
+	observedAt?: number;
+	refreshId?: number;
 }
 
 export interface RuntimeDiagnosticsSnapshot {
@@ -41,7 +45,13 @@ export interface RuntimeDiagnosticsSnapshot {
 		observations: RequestObservation[];
 	};
 	cache: { hits: number; misses: number; writes: number };
-	refresh: { started: number; completed: number; failed: number; deduplicated: number };
+	refresh: {
+		started: number;
+		completed: number;
+		failed: number;
+		cancelled: number;
+		deduplicated: number;
+	};
 	failures: Record<RuntimeFailureKind, number>;
 	recentFailures: Array<{ kind: RuntimeFailureKind; message: string }>;
 	boundary: BoundaryDiagnostic[];
@@ -72,6 +82,7 @@ export class RuntimeDiagnostics {
 	private refreshStarted = 0;
 	private refreshCompleted = 0;
 	private refreshFailed = 0;
+	private refreshCancelled = 0;
 	private refreshDeduplicated = 0;
 	private readonly failureCounts: Record<RuntimeFailureKind, number> = {
 		command: 0,
@@ -87,35 +98,33 @@ export class RuntimeDiagnostics {
 		this.maxBoundary = Math.max(0, options.maxBoundary ?? 25);
 	}
 
-	recordRequest(endpoint: string): void {
-		this.requestTotal++;
-		const safeEndpoint = endpoint.split(/[?#]/, 1)[0].slice(0, 160) || "unknown";
-		if (!this.endpointCounts.has(safeEndpoint) && this.endpointCounts.size >= this.maxEndpoints)
-			return;
-		this.endpointCounts.set(safeEndpoint, (this.endpointCounts.get(safeEndpoint) ?? 0) + 1);
-	}
-
 	/**
 	 * Record a completed request with its duration and outcome dimensions.
 	 * Kept bounded: only the most recent `maxObservations` are retained and
 	 * endpoint identity is preserved (no query strings, no payloads).
 	 */
 	recordRequestObservation(observation: RequestObservation): void {
-		if (this.maxObservations === 0) return;
 		const safeEndpoint = observation.endpoint.split(/[?#]/, 1)[0].slice(0, 160) || "unknown";
+		this.requestTotal++;
+		if (this.endpointCounts.has(safeEndpoint) || this.endpointCounts.size < this.maxEndpoints) {
+			this.endpointCounts.set(safeEndpoint, (this.endpointCounts.get(safeEndpoint) ?? 0) + 1);
+		}
+		if (this.maxObservations === 0) return;
 		const entry: RequestObservation = {
 			endpoint: safeEndpoint,
 			durationMs: Math.max(0, Math.round(observation.durationMs)),
 			outcome: observation.outcome,
-			retries: Math.max(0, observation.retries | 0),
+			retries: Math.max(0, Math.trunc(observation.retries)),
 			cancelled: observation.cancelled === true,
+			...(Number.isFinite(observation.observedAt)
+				? { observedAt: Math.max(0, Math.round(observation.observedAt!)) }
+				: {}),
+			...(Number.isFinite(observation.refreshId)
+				? { refreshId: Math.max(0, Math.round(observation.refreshId!)) }
+				: {}),
 		};
 		this.observations.push(entry);
 		while (this.observations.length > this.maxObservations) this.observations.shift();
-		// Keep endpoint cardinality counters in sync for the summary view.
-		if (!this.endpointCounts.has(safeEndpoint) && this.endpointCounts.size >= this.maxEndpoints)
-			return;
-		this.endpointCounts.set(safeEndpoint, (this.endpointCounts.get(safeEndpoint) ?? 0) + 1);
 	}
 
 	recordCacheHit(): void {
@@ -142,6 +151,10 @@ export class RuntimeDiagnostics {
 		this.refreshFailed++;
 	}
 
+	recordRefreshCancelled(_label: string): void {
+		this.refreshCancelled++;
+	}
+
 	recordRefreshDeduplicated(): void {
 		this.refreshDeduplicated++;
 	}
@@ -162,10 +175,16 @@ export class RuntimeDiagnostics {
 		if (this.maxBoundary === 0) return;
 		this.boundary.push({
 			kind: diagnostic.kind,
-			operation: diagnostic.operation.slice(0, 80),
-			diagnostic: diagnostic.diagnostic.slice(0, 80),
-			sizeBucket: diagnostic.sizeBucket?.slice(0, 40),
-			fallback: diagnostic.fallback?.slice(0, 80),
+			operation: redact(diagnostic.operation).slice(0, 80),
+			diagnostic: redact(diagnostic.diagnostic).slice(0, 80),
+			sizeBucket: diagnostic.sizeBucket ? redact(diagnostic.sizeBucket).slice(0, 40) : undefined,
+			fallback: diagnostic.fallback ? redact(diagnostic.fallback).slice(0, 80) : undefined,
+			observedAt: Number.isFinite(diagnostic.observedAt)
+				? Math.max(0, Math.round(diagnostic.observedAt!))
+				: Date.now(),
+			...(Number.isFinite(diagnostic.refreshId)
+				? { refreshId: Math.max(0, Math.round(diagnostic.refreshId!)) }
+				: {}),
 		});
 		while (this.boundary.length > this.maxBoundary) this.boundary.shift();
 	}
@@ -203,6 +222,7 @@ export class RuntimeDiagnostics {
 				started: this.refreshStarted,
 				completed: this.refreshCompleted,
 				failed: this.refreshFailed,
+				cancelled: this.refreshCancelled,
 				deduplicated: this.refreshDeduplicated,
 			},
 			failures: { ...this.failureCounts },
@@ -218,59 +238,71 @@ export class RuntimeDiagnostics {
 	 */
 	report(): string {
 		const snap = this.snapshot();
-		const lines: string[] = ["OpenRouter Insights — Runtime Diagnostics"];
-		lines.push(`Generated: ${new Date().toISOString()}`);
-		lines.push("");
-		lines.push("Requests");
-		lines.push(`  total: ${snap.requests.total}`);
+		const lines: string[] = [
+			"OpenRouter Insights — Runtime Diagnostics",
+			`Generated: ${new Date().toISOString()}`,
+			"",
+			"Requests",
+			`  total: ${snap.requests.total}`,
+		];
 		const endpoints = Object.entries(snap.requests.byEndpoint);
-		lines.push(
-			endpoints.length > 0
-				? `  byEndpoint: ${endpoints.map(([e, c]) => `${e}=${c}`).join(", ")}`
-				: "  byEndpoint: (none)",
-		);
+		const endpointSummary = endpoints.map(([endpoint, count]) => `${endpoint}=${count}`).join(", ");
+		lines.push(`  byEndpoint: ${endpointSummary || "(none)"}`);
 		if (snap.requests.observations.length > 0) {
 			lines.push("  recent observations:");
 			for (const o of snap.requests.observations) {
-				lines.push(
-					`    - ${o.endpoint} ${o.durationMs}ms ${o.outcome}` +
-						(o.retries > 0 ? ` retries=${o.retries}` : "") +
-						(o.cancelled ? " cancelled" : ""),
-				);
+				lines.push(formatRequestObservation(o));
 			}
 		}
-		lines.push("");
-		lines.push("Cache");
 		lines.push(
+			"",
+			"Cache",
 			`  hits: ${snap.cache.hits} misses: ${snap.cache.misses} writes: ${snap.cache.writes}`,
-		);
-		lines.push("");
-		lines.push("Refresh");
-		lines.push(
+			"",
+			"Refresh",
 			`  started: ${snap.refresh.started} completed: ${snap.refresh.completed} ` +
-				`failed: ${snap.refresh.failed} deduplicated: ${snap.refresh.deduplicated}`,
+				`failed: ${snap.refresh.failed} cancelled: ${snap.refresh.cancelled} ` +
+				`deduplicated: ${snap.refresh.deduplicated}`,
+			"",
+			"Failures",
+			`  ${JSON.stringify(snap.failures)}`,
 		);
-		lines.push("");
-		lines.push("Failures");
-		lines.push(`  ${JSON.stringify(snap.failures)}`);
 		if (snap.boundary.length > 0) {
-			lines.push("");
-			lines.push("Boundary diagnostics");
+			lines.push("", "Boundary diagnostics");
 			for (const b of snap.boundary) {
-				lines.push(
-					`  - ${b.kind}/${b.operation}: ${b.diagnostic}` +
-						(b.sizeBucket ? ` (${b.sizeBucket})` : "") +
-						(b.fallback ? ` [${b.fallback}]` : ""),
-				);
+				lines.push(formatBoundaryDiagnostic(b));
 			}
 		}
 		if (snap.recentFailures.length > 0) {
-			lines.push("");
-			lines.push("Recent failures");
+			lines.push("", "Recent failures");
 			for (const f of snap.recentFailures) {
 				lines.push(`  - [${f.kind}] ${f.message}`);
 			}
 		}
 		return lines.join("\n");
 	}
+}
+
+function formatRequestObservation(observation: RequestObservation): string {
+	return (
+		`    - ${observation.endpoint} ${observation.durationMs}ms ${observation.outcome}` +
+		(observation.retries > 0 ? ` retries=${observation.retries}` : "") +
+		(observation.cancelled ? " cancelled" : "") +
+		(observation.observedAt !== undefined
+			? ` at=${new Date(observation.observedAt).toISOString()}`
+			: "") +
+		(observation.refreshId !== undefined ? ` refresh=${observation.refreshId}` : "")
+	);
+}
+
+function formatBoundaryDiagnostic(diagnostic: BoundaryDiagnostic): string {
+	return (
+		`  - ${diagnostic.kind}/${diagnostic.operation}: ${diagnostic.diagnostic}` +
+		(diagnostic.sizeBucket ? ` (${diagnostic.sizeBucket})` : "") +
+		(diagnostic.fallback ? ` [${diagnostic.fallback}]` : "") +
+		(diagnostic.observedAt !== undefined
+			? ` at=${new Date(diagnostic.observedAt).toISOString()}`
+			: "") +
+		(diagnostic.refreshId !== undefined ? ` refresh=${diagnostic.refreshId}` : "")
+	);
 }

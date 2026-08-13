@@ -17,6 +17,7 @@
 import { log } from "./logger";
 import { createRefreshContext, type RefreshContext, type RefreshReason } from "./refreshContext";
 import { RuntimeDiagnostics } from "./runtimeDiagnostics";
+import { isCancellationError } from "../api/transport/fetchHelpers";
 
 /** How long to wait for an in-flight refresh before superseding it (ms). */
 const SUPERSEDE_WAIT_MS = 150;
@@ -88,6 +89,7 @@ export class RefreshCoordinator {
 		this._latestId = ctx.refreshId;
 		this._pendingLabel = label;
 		this._pendingCtx = ctx;
+		this.diagnostics.recordRefreshStarted(label);
 
 		log.info(`RefreshCoordinator: "${label}" acquired lock (id ${ctx.refreshId})`);
 
@@ -97,13 +99,17 @@ export class RefreshCoordinator {
 				let outcome = "success";
 				if (ctx.isCancelled()) outcome = "cancelled";
 				else if (ctx.isFailed()) outcome = "failure";
+				if (outcome === "success") this.diagnostics.recordRefreshCompleted(label);
+				else if (outcome === "cancelled") this.diagnostics.recordRefreshCancelled(label);
+				else this.diagnostics.recordRefreshFailed(label);
 				log.info(
 					`RefreshCoordinator: "${label}" terminal outcome=${outcome} refresh=${ctx.refreshId} durationMs=${Date.now() - startedAt}`,
 				);
 			})
 			.catch((err) => {
-				const outcome =
-					ctx.isCancelled() || (err as { cancelled?: boolean }).cancelled ? "cancelled" : "failure";
+				const outcome = isCancellationError(err, ctx.signal) ? "cancelled" : "failure";
+				if (outcome === "cancelled") this.diagnostics.recordRefreshCancelled(label);
+				else this.diagnostics.recordRefreshFailed(label);
 				log.info(
 					`RefreshCoordinator: "${label}" terminal outcome=${outcome} refresh=${ctx.refreshId} durationMs=${Date.now() - startedAt}`,
 				);

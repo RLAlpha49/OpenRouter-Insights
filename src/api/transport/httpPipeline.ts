@@ -37,10 +37,6 @@ interface PipelineLogger {
 	warn(..._args: unknown[]): void;
 }
 
-export interface RequestDiagnostics {
-	recordRequest(_endpoint: string): void;
-}
-
 // ── Middleware type ───────────────────────────────────────────
 
 /** A composable HTTP middleware function. */
@@ -57,11 +53,9 @@ export class HttpPipeline implements HttpClient {
 	constructor(
 		private readonly _base: HttpClient,
 		private readonly _middlewares: readonly HttpMiddleware[],
-		private readonly _requestDiagnostics?: RequestDiagnostics,
 	) {}
 
 	async fetch(url: string, init?: RequestInit): Promise<Response> {
-		this._requestDiagnostics?.recordRequest(redactUrl(url));
 		let next = () => this._base.fetch(url, init);
 		for (let i = this._middlewares.length - 1; i >= 0; i--) {
 			const mw = this._middlewares[i];
