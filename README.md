@@ -70,7 +70,7 @@ Pricing works without an API key. Usage features require an OpenRouter API key.
 - The extension does not proxy inference traffic.
 - Logs and errors redact bearer tokens, API keys, and `sk-or-v1-...` values.
 - Usage details stay in memory for the current extension session. The extension exports them only when you request an export.
-- The extension does not send telemetry to third parties.
+- The extension does not send product telemetry to third parties. This is separate from authenticated requests sent directly to OpenRouter when you use usage features.
 
 See [Detailed privacy and security](#detailed-privacy-and-security) for network, caching, polling, and retention details.
 
