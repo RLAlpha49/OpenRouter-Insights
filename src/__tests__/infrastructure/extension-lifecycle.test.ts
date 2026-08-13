@@ -160,7 +160,7 @@ describe("ExtensionRuntime lifecycle", () => {
 		await runtime.start();
 		runtime.dispose();
 		runtime.dispose();
-		expect(services.statusBarUseCase.execute).toHaveBeenCalled();
+		expect(services.doRefresh).toHaveBeenCalled();
 		expect(services.modelPicker.warmConfiguredModelDiscovery).toHaveBeenCalledOnce();
 	});
 

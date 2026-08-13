@@ -162,11 +162,10 @@ export class ExtensionRuntime implements vscode.Disposable {
 		this.started = true;
 		if (this._services.cache.isStale()) {
 			log.info("Cache stale, triggering refresh");
-			await this.runInBackground("pricing refresh", () => this._services.doRefresh());
 		} else {
-			log.info("Cache fresh, skipping initial fetch");
-			await this.runInBackground("status bar", () => this._services.statusBarUseCase.execute());
+			log.info("Cache fresh, refreshing prices on startup anyway");
 		}
+		await this.runInBackground("pricing refresh", () => this._services.doRefresh());
 		if (
 			this.config.isFeatureEnabled("usage") &&
 			(this.config.usageStatusBarEnabled || this.config.usageShowDashboard)
