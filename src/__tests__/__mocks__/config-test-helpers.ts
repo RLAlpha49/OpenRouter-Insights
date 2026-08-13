@@ -18,7 +18,6 @@ export function createFakeReadonlyConfig(overrides?: Partial<ReadonlyConfig>): R
 			modelBrowser: true,
 			comparison: true,
 			export: true,
-			favorites: true,
 			hoverProvider: true,
 			usage: true,
 		},

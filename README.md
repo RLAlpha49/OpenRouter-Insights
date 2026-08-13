@@ -172,7 +172,6 @@ Each feature is enabled by default:
 - `openrouterInsights.features.modelBrowser.enabled` — Model browser and switcher commands.
 - `openrouterInsights.features.comparison.enabled` — Model comparison view.
 - `openrouterInsights.features.export.enabled` — CSV and JSON exports.
-- `openrouterInsights.features.favorites.enabled` — Model favorites.
 - `openrouterInsights.features.hoverProvider.enabled` — Pricing hovers for OpenRouter model IDs.
 - `openrouterInsights.features.usage.enabled` — Account usage tracking.
 

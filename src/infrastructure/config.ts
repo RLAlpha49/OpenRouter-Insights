@@ -70,7 +70,6 @@ export const FEATURE_IDS = [
 	"modelBrowser",
 	"comparison",
 	"export",
-	"favorites",
 	"hoverProvider",
 	"usage",
 ] as const;

@@ -89,9 +89,12 @@ describe("FeatureRegistry", () => {
 
 		// statusBar commands should be disabled
 		expect(disabled.has("openrouter-insights.toggleStatusBar")).toBe(true);
-		// modelBrowser commands should be disabled
+		// modelBrowser commands should be disabled, including favorites
 		expect(disabled.has("openrouter-insights.browseModels")).toBe(true);
 		expect(disabled.has("openrouter-insights.setModelOverride")).toBe(true);
+		expect(disabled.has("openrouter-insights.showFavorites")).toBe(true);
+		expect(disabled.has("openrouter-insights.addToFavorites")).toBe(true);
+		expect(disabled.has("openrouter-insights.removeFromFavorites")).toBe(true);
 		// export commands should still be enabled
 		expect(disabled.has("openrouter-insights.exportCsv")).toBe(false);
 		reg.dispose();
@@ -112,7 +115,6 @@ describe("FeatureRegistry", () => {
 			modelBrowser: false,
 			comparison: false,
 			export: false,
-			favorites: false,
 		});
 		const reg = new FeatureRegistry();
 

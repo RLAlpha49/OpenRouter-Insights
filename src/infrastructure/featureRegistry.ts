@@ -11,17 +11,15 @@
  *
  * Features:
  *   statusBar     — pricing in VS Code status bar
- *   modelBrowser  — QuickPick model browsers and switcher
+ *   modelBrowser  — QuickPick model browsers and switcher (includes model favorites/pinning)
  *   comparison    — webview side-by-side comparison
  *   export        — CSV/JSON export
- *   favorites     — model pinning/favorites
  *
  * Settings live under:
  *   "openrouterInsights.features.statusBar.enabled": boolean (default true)
  *   "openrouterInsights.features.modelBrowser.enabled": boolean (default true)
  *   "openrouterInsights.features.comparison.enabled": boolean (default true)
  *   "openrouterInsights.features.export.enabled": boolean (default true)
- *   "openrouterInsights.features.favorites.enabled": boolean (default true)
  */
 
 import * as vscode from "vscode";
@@ -33,14 +31,15 @@ export type { FeatureId } from "./config";
 /** CLI flags that are gated by features. */
 const FEATURE_COMMAND_PREFIXES: Record<FeatureId, string[]> = {
 	statusBar: ["openrouter-insights.toggleStatusBar"],
-	modelBrowser: ["openrouter-insights.browseModels", "openrouter-insights.setModelOverride"],
-	comparison: ["openrouter-insights.compareModels"],
-	export: ["openrouter-insights.exportCsv", "openrouter-insights.exportJson"],
-	favorites: [
+	modelBrowser: [
+		"openrouter-insights.browseModels",
+		"openrouter-insights.setModelOverride",
+		"openrouter-insights.showFavorites",
 		"openrouter-insights.addToFavorites",
 		"openrouter-insights.removeFromFavorites",
-		"openrouter-insights.showFavorites",
 	],
+	comparison: ["openrouter-insights.compareModels"],
+	export: ["openrouter-insights.exportCsv", "openrouter-insights.exportJson"],
 	hoverProvider: [],
 	usage: [
 		"openrouter-insights.setApiKey",

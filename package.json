@@ -71,7 +71,7 @@
 				"title": "Show Favorite Models",
 				"category": "OpenRouter Insights",
 				"icon": "$(star-full)",
-				"enablement": "openrouter-insights:feature.favorites.enabled"
+				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
 				"command": "openrouter-insights.toggleStatusBar",
@@ -124,7 +124,7 @@
 				"title": "Add to Favorites",
 				"category": "OpenRouter Insights",
 				"icon": "$(star-add)",
-				"enablement": "openrouter-insights:feature.favorites.enabled"
+				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
 				"command": "openrouter-insights.copyModelId",
@@ -143,7 +143,7 @@
 				"title": "Remove from Favorites",
 				"category": "OpenRouter Insights",
 				"icon": "$(star-delete)",
-				"enablement": "openrouter-insights:feature.favorites.enabled"
+				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
 				"command": "openrouter-insights.clearCache",
@@ -433,17 +433,12 @@
 					"default": true,
 					"description": "Enable the side-by-side model comparison webview."
 				},
-				"openrouterInsights.features.export.enabled": {
-					"type": "boolean",
-					"default": true,
-					"description": "Enable CSV and JSON export commands."
-				},
-				"openrouterInsights.features.favorites.enabled": {
-					"type": "boolean",
-					"default": true,
-					"description": "Enable model favoriting/pinning."
-				},
-				"openrouterInsights.features.hoverProvider.enabled": {
+			"openrouterInsights.features.export.enabled": {
+				"type": "boolean",
+				"default": true,
+				"description": "Enable CSV and JSON export commands."
+			},
+			"openrouterInsights.features.hoverProvider.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show pricing tooltips when hovering over OpenRouter model IDs (e.g. 'openai/gpt-4o') in source files."
