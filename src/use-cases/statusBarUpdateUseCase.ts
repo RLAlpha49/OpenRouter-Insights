@@ -23,7 +23,7 @@ function assertNever(value: never): never {
 
 export class StatusBarUpdateUseCase {
 	private _lastResolvedModel: string | undefined;
-	private _lastPricingStatus: "found" | "missing" | undefined;
+	private _lastSignature: string | undefined;
 	private _pending: Promise<void> | undefined;
 	private readonly _cache: IPricingCache;
 	private readonly _statusBar: StatusBarPresenter;
@@ -97,17 +97,22 @@ export class StatusBarUpdateUseCase {
 			);
 		}
 
-		// Skip re-render when nothing changed
-		const currentPricingStatus: "found" | "missing" = pricing ? "found" : "missing";
-		if (modelId === this._lastResolvedModel && currentPricingStatus === this._lastPricingStatus) {
+		// Skip re-render when the displayed state is unchanged. The signature
+		// includes the resolved price values (blended rate, per-token costs,
+		// deprecation) so a price refresh that keeps the same model ID still
+		// updates the status bar.
+		const signature = this._computeSignature(modelId, displayName, pricing);
+		if (signature === this._lastSignature) {
 			log.debug("updateStatusBar: no change, skipping re-render");
 			return;
 		}
-		this._lastResolvedModel = modelId;
-		this._lastPricingStatus = currentPricingStatus;
+		this._lastSignature = signature;
 
 		// Model changed — invalidate the LM API cache
-		this._modelPicker.invalidateConfiguredIdsCache();
+		if (modelId !== this._lastResolvedModel) {
+			this._lastResolvedModel = modelId;
+			this._modelPicker.invalidateConfiguredIdsCache();
+		}
 
 		const data = this._cache.get();
 		const finalName = displayName ?? pricing?.name ?? modelId ?? "no model";
@@ -165,6 +170,32 @@ export class StatusBarUpdateUseCase {
 	/** Invalidate the change-detection cache (force next call to always re-render). */
 	invalidateCache(): void {
 		this._lastResolvedModel = undefined;
-		this._lastPricingStatus = undefined;
+		this._lastSignature = undefined;
+	}
+
+	/**
+	 * Compute a stable signature of the data that drives the rendered status
+	 * bar, so a change in price (same model) is detected and re-rendered.
+	 */
+	private _computeSignature(
+		modelId: string | undefined,
+		displayName: string | undefined,
+		pricing: ModelPricingInfo | undefined,
+	): string {
+		if (!pricing) {
+			return `missing|${modelId ?? ""}|${displayName ?? ""}`;
+		}
+		return [
+			"found",
+			modelId ?? "",
+			displayName ?? "",
+			pricing.name,
+			pricing.blendedRate,
+			pricing.isFree,
+			pricing.isDeprecated,
+			pricing.contextLengthFormatted,
+			pricing.perMillion.prompt,
+			pricing.perMillion.completion,
+		].join("|");
 	}
 }

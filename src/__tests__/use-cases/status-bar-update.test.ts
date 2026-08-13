@@ -136,6 +136,24 @@ describe("StatusBarUpdateUseCase", () => {
 		expect(shown).toHaveLength(1);
 	});
 
+	it("re-renders when the price changes for the same model", async () => {
+		const model = makeModel({ blendedRate: 3.5 });
+		const cache = createFakeCache([model]);
+		const config = createFakeReadonlyConfig();
+		const useCase = new StatusBarUpdateUseCase(cache, statusBar, modelPicker, config, eventBus);
+
+		await useCase.execute();
+		expect(shown).toHaveLength(1);
+
+		// Same model, updated price — should re-render despite unchanged model ID.
+		const updated = makeModel({ blendedRate: 7.25, perMillion: { prompt: 5, completion: 20, image: 0, request: 0, inputCacheRead: 2, inputCacheWrite: 0, webSearch: 0, internalReasoning: 0 } });
+		const updatedCache = createFakeCache([updated]);
+		const updatedUseCase = new StatusBarUpdateUseCase(updatedCache, statusBar, modelPicker, config, eventBus);
+
+		await updatedUseCase.execute();
+		expect(shown).toHaveLength(2);
+	});
+
 	it("can invalidate change-detection cache", async () => {
 		const model = makeModel();
 		const cache = createFakeCache([model]);
