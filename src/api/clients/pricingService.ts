@@ -38,6 +38,8 @@ const MAX_PAGES = 5;
 const CIRCUIT_BREAKER_MAX_FAILURES = 3;
 /** Default sort order for the models endpoint. */
 const DEFAULT_SORT: ModelsSortOption = "pricing-low-to-high";
+/** Maximum number of distinct page responses retained for ETag revalidation. */
+const PAGE_CACHE_MAX_ENTRIES = 8;
 
 export interface PricingCircuitState {
 	status: "closed" | "open";
@@ -416,6 +418,10 @@ export class PricingFetcher {
 	): Promise<PageResult> {
 		const pageKey = new URL(url).href;
 		const cachedPage = this.pageCache.get(pageKey);
+		if (cachedPage) {
+			this.pageCache.delete(pageKey);
+			this.pageCache.set(pageKey, cachedPage);
+		}
 		this._logger.debug("doFetchModelsPage: sending GET", url);
 		const headers: Record<string, string> = {
 			Accept: "application/json",
@@ -449,6 +455,11 @@ export class PricingFetcher {
 			response,
 			health: body.health,
 		});
+		while (this.pageCache.size > PAGE_CACHE_MAX_ENTRIES) {
+			const oldestKey = this.pageCache.keys().next().value;
+			if (oldestKey === undefined) break;
+			this.pageCache.delete(oldestKey);
+		}
 		return { data: response.data, links: response.links, contractHealth: body.health };
 	}
 }

@@ -260,6 +260,33 @@ describe("fetchModelPricing", () => {
 		expect(result.models).toHaveLength(2);
 	});
 
+	it("bounds page cache entries and promotes recently used pages", async () => {
+		const requests: Array<{ url: string; etag: string | null }> = [];
+		const client: HttpClient = {
+			fetch: async (url, init) => {
+				const etag = `"${url}"`;
+				requests.push({ url, etag: new Headers(init?.headers).get("If-None-Match") });
+				return jsonResponse({ data: [{ ...validModel, id: url, name: url }] }, 200, { ETag: etag });
+			},
+		};
+
+		const pageUrls = Array.from(
+			{ length: 8 },
+			(_, index) => `https://test/api/v1/models?page=${index}`,
+		);
+		for (const url of pageUrls) {
+			await (fetcher as any).doFetchModelsPage(client, url);
+		}
+		await (fetcher as any).doFetchModelsPage(client, pageUrls[0]);
+		await (fetcher as any).doFetchModelsPage(client, "https://test/api/v1/models?page=8");
+		await (fetcher as any).doFetchModelsPage(client, pageUrls[0]);
+		await (fetcher as any).doFetchModelsPage(client, pageUrls[1]);
+
+		const recentRequests = requests.slice(-2);
+		expect(recentRequests[0].etag).toBe(`"${pageUrls[0]}"`);
+		expect(recentRequests[1].etag).toBeNull();
+	});
+
 	it("throws on non-OK response", async () => {
 		const client = fakeClient(errorResponse(500, "Internal Server Error"));
 		await expect(fetcher.fetchModelPricing(client, "https://test/api/v1/models")).rejects.toThrow(
