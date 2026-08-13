@@ -9,7 +9,9 @@ import * as vscode from "vscode";
 import type { ModelPricingInfo } from "../../types";
 import { escapeHtml } from "../escapeHtml";
 import { buildDetailDocument } from "../webviewAssets";
-import { formatDateOnly } from "../formatting/formatting";
+import { formatDateOnly, formatDetailPrice, formatTokenCount } from "../formatting/formatting";
+import { resolveRate } from "../formatting/currencyService";
+import { getCurrency, getCurrencyRate, getFavoriteModels } from "../../infrastructure/config";
 
 /**
  * Open a webview displaying detailed information about a single model.
@@ -31,8 +33,8 @@ function depLabel(m: ModelPricingInfo): string {
 }
 
 /** Build a single pricing stat row for the detail view. Zero values show "—" instead of hiding. */
-function priceCell(label: string, value: number): string {
-	const formatted = value > 0 ? `$${value.toFixed(4)} /M tok` : "—";
+function priceCell(label: string, value: number, currency: string, rate: number): string {
+	const formatted = formatDetailPrice(value, currency, rate);
 	return `<div class="or-stat-row"><span class="or-stat-label">${escapeHtml(label)}</span><span class="or-stat-value">${formatted}</span></div>`;
 }
 
@@ -84,9 +86,11 @@ function providerCard(m: ModelPricingInfo): string {
 	// Always show the provider name (derived if API doesn't provide it)
 	rows.push(statRow("Provider", escapeHtml(providerName || "—")));
 	if (m.topProviderContextLength > 0)
-		rows.push(statRow("Context Limit", `${m.topProviderContextLength.toLocaleString()} tokens`));
+		rows.push(statRow("Context Limit", `${formatTokenCount(m.topProviderContextLength)} tokens`));
 	if (m.topProviderMaxCompletionTokens > 0)
-		rows.push(statRow("Max Output", `${m.topProviderMaxCompletionTokens.toLocaleString()} tokens`));
+		rows.push(
+			statRow("Max Output", `${formatTokenCount(m.topProviderMaxCompletionTokens)} tokens`),
+		);
 	if (m.topProviderIsModerated)
 		rows.push(statRow("Content Moderation", '<span style="color:var(--or-orange)">Enabled</span>'));
 	if (rows.length <= 1) {
@@ -115,16 +119,23 @@ function statRow(label: string, value: string): string {
 
 function buildDetailHtml(m: ModelPricingInfo): string {
 	const pm = m.perMillion;
+	const currency = getCurrency();
+	const rate = resolveRate(currency, getCurrencyRate());
+	const favorite = getFavoriteModels().includes(m.id);
+	const modelArgument = encodeURIComponent(JSON.stringify(m.id));
+	const favoriteCommand = favorite
+		? `openrouter-insights.removeFromFavorites?${modelArgument}`
+		: `openrouter-insights.addToFavorites?${modelArgument}`;
 
 	const pricingRows = [
-		priceCell("Prompt", pm.prompt),
-		priceCell("Completion", pm.completion),
-		priceCell("Cache Read", pm.inputCacheRead),
-		priceCell("Cache Write", pm.inputCacheWrite),
-		priceCell("Reasoning", pm.internalReasoning),
-		priceCell("Web Search", pm.webSearch),
-		priceCell("Image", pm.image),
-		priceCell("Request", pm.request),
+		priceCell("Prompt", pm.prompt, currency, rate),
+		priceCell("Completion", pm.completion, currency, rate),
+		priceCell("Cache Read", pm.inputCacheRead, currency, rate),
+		priceCell("Cache Write", pm.inputCacheWrite, currency, rate),
+		priceCell("Reasoning", pm.internalReasoning, currency, rate),
+		priceCell("Web Search", pm.webSearch, currency, rate),
+		priceCell("Image", pm.image, currency, rate),
+		priceCell("Request", pm.request, currency, rate),
 	].join("");
 
 	const depLabelText = depLabel(m);
@@ -167,13 +178,13 @@ function buildDetailHtml(m: ModelPricingInfo): string {
 		<div class="or-hero-label">Model Detail</div>
 		<div class="or-hero-amount" style="font-size:32px"><a href="${escapeHtml(absoluteDetailsLink(m))}" style="color:var(--or-teal);text-decoration:underline">${escapeHtml(m.name)} ↗${freeBadge}</a></div>
 		<div class="or-hero-sub"><code>${escapeHtml(m.id)}</code></div>
-		<div class="or-hero-sub">Blended Rate: <span style="color:var(--or-amber);font-family:var(--or-font-mono)">~$<b>${m.blendedRate.toFixed(4)}</b>/M tok</span></div>
+		<div class="or-hero-sub">Blended Rate: <span style="color:var(--or-amber);font-family:var(--or-font-mono)">${formatDetailPrice(m.blendedRate, currency, rate)} /M tok</span></div>
 	</div>
 	${depBadge}
 	<div class="or-card">
-		<h3>Pricing · per 1M tokens (USD)</h3>
+		<h3>Pricing · per 1M tokens (${escapeHtml(currency)})</h3>
 		${pricingRows}
-		<div class="or-stat-row"><span class="or-stat-label">Context Length</span><span class="or-stat-value">${m.contextLengthFormatted} tokens</span></div>
+		<div class="or-stat-row"><span class="or-stat-label">Context Length</span><span class="or-stat-value">${formatTokenCount(m.contextLength)} tokens</span></div>
 		${maxOutHtml}
 	</div>
 	${capsHtml}
@@ -184,8 +195,10 @@ function buildDetailHtml(m: ModelPricingInfo): string {
 	${metaHtml}
 	${descHtml}
 	<div class="or-actions">
-		<a href="${escapeHtml(absoluteDetailsLink(m))}" class="or-btn" aria-label="Open ${escapeHtml(m.name)} on OpenRouter">↗ Open on OpenRouter</a>
+		<a href="${escapeHtml(absoluteDetailsLink(m))}" target="_blank" rel="noreferrer" class="or-btn" aria-label="Open ${escapeHtml(m.name)} on OpenRouter">↗ Open on OpenRouter</a>
+		<a href="command:openrouter-insights.copyModelId?${modelArgument}" class="or-btn" aria-label="Copy ${escapeHtml(m.name)} model ID">▣ Copy Model ID</a>
 		<a href="command:openrouter-insights.refreshPricing" class="or-btn" aria-label="Refresh pricing data">↻ Refresh Pricing</a>
+		<a href="command:${favoriteCommand}" class="or-btn" aria-label="${favorite ? "Remove" : "Add"} ${escapeHtml(m.name)} ${favorite ? "from" : "to"} favorites">${favorite ? "★ Remove from Favorites" : "☆ Add to Favorites"}</a>
 	</div>
 	`;
 	return buildDetailDocument(`${escapeHtml(m.name)} — Model Detail`, body);

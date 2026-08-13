@@ -3,6 +3,8 @@ import {
 	formatDateOnly,
 	formatShortDateLabel,
 	formatTimestamp,
+	formatTokenCount,
+	formatDetailPrice,
 } from "../../ui/formatting/formatting";
 
 describe("shared UI date formatting", () => {
@@ -21,5 +23,16 @@ describe("shared UI date formatting", () => {
 	it("returns a stable fallback for invalid dates", () => {
 		expect(formatDateOnly("not-a-date")).toBe("—");
 		expect(formatTimestamp("not-a-date")).toBe("—");
+	});
+});
+
+describe("shared model-detail formatting", () => {
+	it("formats token counts and model prices", () => {
+		expect(formatTokenCount(0)).toBe("0");
+		expect(formatTokenCount(1234567)).toContain("1,234,567");
+		expect(formatTokenCount(-1)).toBe("—");
+		expect(formatDetailPrice(0, "USD", 0)).toBe("—");
+		expect(formatDetailPrice(1.25, "USD", 0)).toContain("$");
+		expect(formatDetailPrice(1.25, "EUR", 0)).toContain("~€");
 	});
 });

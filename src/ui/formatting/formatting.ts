@@ -8,6 +8,7 @@ import type { ModelPricingInfo } from "../../types";
 import { computeBlendedRate } from "../../api/clients/pricingService";
 import { getBlendWeights } from "../../infrastructure/config";
 import { BLEND_NO_CACHE, effectiveBlendWeights } from "../../models/domain";
+import { formatCurrencyPrice } from "./currencyService";
 
 const DATE_ONLY_FORMATTER = new Intl.DateTimeFormat("en-US", {
 	timeZone: "UTC",
@@ -54,6 +55,22 @@ export function formatShortDateLabel(value: string): string {
 export function formatTimestamp(value: string | number | Date): string {
 	const date = toValidDate(value);
 	return date ? TIMESTAMP_FORMATTER.format(date) : "—";
+}
+
+/** Format a non-negative token count using the active locale. */
+export function formatTokenCount(value: number): string {
+	if (!Number.isFinite(value) || value < 0) return "—";
+	try {
+		return new Intl.NumberFormat(vscode.env.language).format(value);
+	} catch {
+		return Math.round(value).toLocaleString("en-US");
+	}
+}
+
+/** Format a model-detail USD price in the configured presentation currency. */
+export function formatDetailPrice(usdValue: number, currency: string, rate: number): string {
+	if (!Number.isFinite(usdValue) || usdValue <= 0) return "—";
+	return formatCurrencyPrice(usdValue, currency, rate);
 }
 
 /**

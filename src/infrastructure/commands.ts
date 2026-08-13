@@ -275,14 +275,19 @@ export class RemoveFromFavoritesCommand implements ICommand {
 
 export class CopyModelIdCommand implements ICommand {
 	readonly id = "openrouter-insights.copyModelId";
-	readonly argAdapter = adaptNoArgs;
+	readonly argAdapter = adaptModelId;
 	constructor(
 		private readonly _cache: IPricingCache,
 		private readonly _modelPicker: ModelPickerEnhancer,
 		private readonly _eventBus: EventBus,
 	) {}
-	async execute(): Promise<void> {
+	async execute(modelId?: unknown): Promise<void> {
 		try {
+			if (typeof modelId === "string" && modelId.length > 0) {
+				await vscode.env.clipboard.writeText(modelId);
+				void vscode.window.showInformationMessage(`Copied "${modelId}"`);
+				return;
+			}
 			const lookup = this._cache.getLookup();
 			const configuredIds = await this._modelPicker.discoverConfiguredModelIds(lookup);
 			// Pick a model from the browser
