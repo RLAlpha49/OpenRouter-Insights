@@ -113,16 +113,15 @@ export function registerCommands(
 				log.debug("registerCommands: ignored disabled command", cmd.id);
 				return undefined;
 			}
-			const adapter = cmd.argAdapter ?? ((raw: readonly unknown[]) => [...raw]);
-			let typedArgs: readonly unknown[];
 			try {
-				typedArgs = adapter(args);
+				const adapter = cmd.argAdapter ?? ((raw: readonly unknown[]) => [...raw]);
+				const typedArgs = adapter(args);
+				return Promise.resolve(
+					(cmd.execute as (..._args: unknown[]) => Promise<void>)(...typedArgs),
+				).catch((error: unknown) => presentCommandError(cmd.id, error, svc.diagnostics));
 			} catch (error) {
 				return presentCommandError(cmd.id, error, svc.diagnostics);
 			}
-			return (cmd.execute as (..._args: unknown[]) => Promise<void>)(...typedArgs).catch(
-				(error: unknown) => presentCommandError(cmd.id, error, svc.diagnostics),
-			);
 		});
 		registrations.push(disposable);
 	}

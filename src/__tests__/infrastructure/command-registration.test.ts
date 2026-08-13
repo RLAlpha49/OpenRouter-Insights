@@ -108,4 +108,36 @@ describe("command contract preservation through registration", () => {
 		await handlers.get("openrouter-insights.selectUsageKey")!("key-hash-123");
 		expect(doRefreshWithKey).not.toHaveBeenCalled();
 	});
+
+	it("routes synchronous command execution failures through recovery", async () => {
+		const handlers = new Map<string, (..._args: unknown[]) => unknown>();
+		vi.spyOn(vscode.commands, "registerCommand").mockImplementation(
+			(id: string, cb: (..._args: unknown[]) => unknown) => {
+				handlers.set(id, cb);
+				return { dispose: () => {} };
+			},
+		);
+		const diagnostics = { recordFailure: vi.fn() };
+		const commands = new Map<string, any>([
+			[
+				"openrouter-insights.syncFailure",
+				{
+					id: "openrouter-insights.syncFailure",
+					argAdapter: adaptNoArgs,
+					execute: () => {
+						throw new Error("sync failure");
+					},
+				},
+			],
+		]);
+		const svc = {
+			commands,
+			features: { shouldRegisterCommand: () => true },
+			diagnostics,
+		};
+		registerCommands({} as any, svc as any);
+
+		await expect(handlers.get("openrouter-insights.syncFailure")!()).resolves.toBeUndefined();
+		expect(diagnostics.recordFailure).toHaveBeenCalledWith("command", expect.any(Error));
+	});
 });
