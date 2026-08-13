@@ -282,6 +282,35 @@ describe("ModelPickerEnhancer", () => {
 		expect(browserPick.items).toHaveLength(2);
 	});
 
+	it("browses catalog models that are not configured in Copilot", async () => {
+		const picker = new ModelPickerEnhancer();
+		const configured = model("openai/configured");
+		const catalogOnly = model("google/catalog-only");
+
+		await picker.showModelBrowser([configured, catalogOnly]);
+
+		const quickPick = (vscode.window as any)._quickPicks.at(-1);
+		expect(
+			quickPick.items.map((item: { modelInfo: ModelPricingInfo }) => item.modelInfo.id),
+		).toEqual(expect.arrayContaining([configured.id, catalogOnly.id]));
+		quickPick.triggerHide();
+	});
+
+	it("shows only existing favorites in the favorites collection", async () => {
+		(vscode.workspace as any)._configValues = {
+			"modelBrowser.favorites": ["openai/one", "stale/model"],
+		};
+		ConfigService.instance.dispose();
+		const picker = new ModelPickerEnhancer();
+
+		await picker.showFavoriteModels([model("openai/one"), model("google/two")]);
+
+		const quickPick = (vscode.window as any)._quickPicks.at(-1);
+		expect(quickPick.items).toHaveLength(1);
+		expect(quickPick.items[0].modelInfo.id).toBe("openai/one");
+		quickPick.triggerHide();
+	});
+
 	it("shows pricing badges without changing browser actions", async () => {
 		const picker = new ModelPickerEnhancer();
 		const featured = model("openai/featured", {

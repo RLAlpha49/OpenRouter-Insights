@@ -77,12 +77,11 @@ export class ModelPickerEnhancer {
 	}
 
 	/**
-	 * Show a flat QuickPick of configured OpenRouter models with pricing.
-	 * Only shows models actually available in Copilot's BYOK provider.
+	 * Show a flat QuickPick of all cached OpenRouter models with pricing.
 	 * Favorites are pinned to the top.
 	 */
-	async showModelBrowser(pricing: ModelPricingInfo[], configuredIds: Set<string>): Promise<void> {
-		const filtered = filterAndSort(pricing, configuredIds);
+	async showModelBrowser(pricing: ModelPricingInfo[], _configuredIds?: Set<string>): Promise<void> {
+		const filtered = filterAndSort(pricing);
 		if (filtered.length === 0) {
 			log.warn("showModelBrowser: no models match current filters");
 			void vscode.window.showWarningMessage(
@@ -90,14 +89,6 @@ export class ModelPickerEnhancer {
 			);
 			return;
 		}
-		if (configuredIds.size === 0) {
-			log.warn("showModelBrowser: no configured model IDs, LM API may be unavailable");
-			void vscode.window.showWarningMessage(
-				"No OpenRouter models are configured in Copilot. Add one via the Copilot model picker, then try again.",
-			);
-			return;
-		}
-
 		invalidateSortCache();
 
 		// Pin favorites to the top
@@ -111,13 +102,26 @@ export class ModelPickerEnhancer {
 		if (!qp) return;
 	}
 
+	/** Show a filterable QuickPick containing only models in the favorites collection. */
+	async showFavoriteModels(pricing: ModelPricingInfo[]): Promise<void> {
+		const favorites = new Set(getFavoriteModels());
+		const filtered = filterAndSort(pricing).filter((model) => favorites.has(model.id));
+		if (filtered.length === 0) {
+			void vscode.window.showWarningMessage(
+				"No favorited models are available in the cached catalog. Add a model to Favorites first.",
+			);
+			return;
+		}
+		showQuickPick(buildBrowserItems(filtered, favorites), "Favorite OpenRouter Models");
+	}
+
 	/**
 	 * Webview-based side-by-side model comparison.
 	 * User selects 2-5 models and sees a comparison table with pricing,
 	 * context length, deprecation status, and OpenRouter links.
 	 */
 	async showComparisonView(pricing: ModelPricingInfo[], configuredIds: Set<string>): Promise<void> {
-		const filtered = filterAndSort(pricing, configuredIds);
+		const filtered = filterAndSort(pricing).filter((model) => configuredIds.has(model.id));
 		if (filtered.length < 2) {
 			void vscode.window.showWarningMessage("Need at least 2 configured models to compare.");
 			return;
@@ -170,7 +174,7 @@ export class ModelPickerEnhancer {
 	 * Sets the selectedModelId config and opens the Copilot model picker.
 	 */
 	async showModelSwitcher(pricing: ModelPricingInfo[], configuredIds: Set<string>): Promise<void> {
-		const filtered = filterAndSort(pricing, configuredIds);
+		const filtered = filterAndSort(pricing).filter((model) => configuredIds.has(model.id));
 		if (filtered.length === 0) {
 			void vscode.window.showWarningMessage("No configured models to switch to.");
 			return;
@@ -300,23 +304,20 @@ function getSortCacheKey(sortMode: string, freeOnly: boolean, configuredIds: Set
 }
 
 /** Filter to configured/available models, apply all active filters, and sort — memoized. */
-function filterAndSort(
-	pricing: ModelPricingInfo[],
-	configuredIds: Set<string>,
-): ModelPricingInfo[] {
+function filterAndSort(pricing: ModelPricingInfo[]): ModelPricingInfo[] {
 	const sortMode = getModelBrowserSort();
 	const freeOnly = getShowFreeModelsOnly();
 	const caps = snapshotCapabilityFilters();
 
 	const filterFingerprint = [freeOnly, caps.showDeprecated].join("|");
-	const cacheKey = getSortCacheKey(sortMode, freeOnly, configuredIds);
+	const cacheKey = getSortCacheKey(sortMode, freeOnly, new Set(pricing.map((model) => model.id)));
 	const cacheKeyCombined = `${cacheKey}|${filterFingerprint}|${pricing.length}`;
 
 	if (_sortCacheKey === cacheKeyCombined && _sortCacheSorted.length > 0) {
 		return _sortCacheSorted;
 	}
 
-	let models = pricing.filter((m) => configuredIds.has(m.id));
+	let models = [...pricing];
 	if (freeOnly) models = models.filter((m) => m.blendedRate === 0);
 	models = applyCapabilityFilters(models, caps);
 	const result = sortModels(models, sortMode);

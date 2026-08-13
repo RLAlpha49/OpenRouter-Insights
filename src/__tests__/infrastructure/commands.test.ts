@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import {
 	BrowseModelsCommand,
+	ShowFavoritesCommand,
 	ClearCacheCommand,
 	CompareModelsCommand,
 	ExportCsvCommand,
@@ -126,7 +127,7 @@ describe("command orchestration", () => {
 		expect(picker.showModelBrowser).not.toHaveBeenCalled();
 	});
 
-	it("routes browse commands to the picker with configured IDs", async () => {
+	it("routes browse commands to the full catalog and configured actions", async () => {
 		const data = { models: [model()] };
 		const cache = store(data);
 		const configured = new Set(["openai/gpt-4o"]);
@@ -139,9 +140,19 @@ describe("command orchestration", () => {
 		await new BrowseModelsCommand(cache as any, picker).execute();
 		await new CompareModelsCommand(cache as any, picker).execute();
 		await new SetModelOverrideCommand(cache as any, picker).execute();
-		expect(picker.showModelBrowser).toHaveBeenCalledWith(data.models, configured);
+		expect(picker.showModelBrowser).toHaveBeenCalledWith(data.models);
 		expect(picker.showComparisonView).toHaveBeenCalledWith(data.models, configured);
 		expect(picker.showModelSwitcher).toHaveBeenCalledWith(data.models, configured);
+	});
+
+	it("routes the favorites command to the cached catalog", async () => {
+		const data = { models: [model()] };
+		const cache = store(data);
+		const picker = { showFavoriteModels: vi.fn() } as any;
+
+		await new ShowFavoritesCommand(cache as any, picker).execute();
+
+		expect(picker.showFavoriteModels).toHaveBeenCalledWith(data.models);
 	});
 
 	it("opens detail view for a requested model instead of the browser", async () => {
@@ -172,7 +183,7 @@ describe("command orchestration", () => {
 
 		await new BrowseModelsCommand(cache as any, picker).execute("missing/model");
 
-		expect(picker.showModelBrowser).toHaveBeenCalledWith(data.models, configured);
+		expect(picker.showModelBrowser).toHaveBeenCalledWith(data.models);
 	});
 
 	it("ignores cancelled or unknown quick actions", async () => {
@@ -188,22 +199,20 @@ describe("command orchestration", () => {
 	it("coalesces concurrent model-browser requests", async () => {
 		const data = { models: [model()] };
 		const cache = store(data);
-		let resolveDiscovery: ((_ids: Set<string>) => void) | undefined;
-		const discovery = new Promise<Set<string>>((resolve) => {
-			resolveDiscovery = resolve;
+		let resolveBrowser: (() => void) | undefined;
+		const browser = new Promise<void>((resolve) => {
+			resolveBrowser = resolve;
 		});
 		const picker = {
-			discoverConfiguredModelIds: vi.fn(() => discovery),
-			showModelBrowser: vi.fn(),
+			showModelBrowser: vi.fn(() => browser),
 		} as any;
 		const command = new BrowseModelsCommand(cache as any, picker);
 
 		const first = command.execute();
 		const second = command.execute();
-		resolveDiscovery?.(new Set(["openai/gpt-4o"]));
+		resolveBrowser?.();
 		await Promise.all([first, second]);
 
-		expect(picker.discoverConfiguredModelIds).toHaveBeenCalledOnce();
 		expect(picker.showModelBrowser).toHaveBeenCalledOnce();
 	});
 

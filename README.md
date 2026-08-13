@@ -100,6 +100,7 @@ See [Detailed privacy and security](#detailed-privacy-and-security) for network,
 | **Compare Models**                               | Select two models for side-by-side comparison. |
 | **Set Model Override**                           | Manually choose the model to track.            |
 | **Clear Selected Model Override**                | Return to automatic model detection.           |
+| **Show Favorite Models**                         | Browse the saved model collection.             |
 | **Add to Favorites** / **Remove from Favorites** | Pin or unpin a model in the browser.           |
 | **Copy Model ID**                                | Copy the selected model ID.                    |
 | **Open on OpenRouter**                           | Open the selected model's OpenRouter page.     |
@@ -149,7 +150,7 @@ All settings use the `openrouterInsights` prefix.
 
 - `openrouterInsights.modelBrowser.showFreeOnly` (`boolean`, default `false`) — Show only free models.
 - `openrouterInsights.modelBrowser.sort` (`string`, default `blendedRate`) — Sort by `blendedRate`, `promptPrice`, `completionPrice`, `contextLength`, or `name`.
-- `openrouterInsights.modelBrowser.favorites` (`array`, default `[]`) — Pin these model IDs to the top of the browser.
+- `openrouterInsights.modelBrowser.favorites` (`array`, default `[]`) — Save model IDs and pin them to the top of the full cached catalog browser.
 - `openrouterInsights.modelBrowser.showDeprecated` (`boolean`, default `true`) — Include deprecated or legacy models.
 
 ### General pricing and refresh

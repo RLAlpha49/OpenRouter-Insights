@@ -67,6 +67,13 @@
 				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
+				"command": "openrouter-insights.showFavorites",
+				"title": "Show Favorite Models",
+				"category": "OpenRouter Insights",
+				"icon": "$(star-full)",
+				"enablement": "openrouter-insights:feature.favorites.enabled"
+			},
+			{
 				"command": "openrouter-insights.toggleStatusBar",
 				"title": "Toggle Status Bar Display",
 				"category": "OpenRouter Insights",

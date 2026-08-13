@@ -36,7 +36,11 @@ const FEATURE_COMMAND_PREFIXES: Record<FeatureId, string[]> = {
 	modelBrowser: ["openrouter-insights.browseModels", "openrouter-insights.setModelOverride"],
 	comparison: ["openrouter-insights.compareModels"],
 	export: ["openrouter-insights.exportCsv", "openrouter-insights.exportJson"],
-	favorites: ["openrouter-insights.addToFavorites", "openrouter-insights.removeFromFavorites"],
+	favorites: [
+		"openrouter-insights.addToFavorites",
+		"openrouter-insights.removeFromFavorites",
+		"openrouter-insights.showFavorites",
+	],
 	hoverProvider: [],
 	usage: [
 		"openrouter-insights.setApiKey",

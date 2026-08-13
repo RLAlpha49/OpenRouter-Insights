@@ -31,10 +31,7 @@ describe("model browser request budget", () => {
 	it("opens from pricing data without starting catalog enrichment", async () => {
 		const picker = new ModelPickerEnhancer();
 		const executeCommand = vi.spyOn(vscode.commands, "executeCommand");
-		await picker.showModelBrowser(
-			[model("openai/one"), model("google/two")],
-			new Set(["openai/one", "google/two"]),
-		);
+		await picker.showModelBrowser([model("openai/one"), model("google/two")]);
 		expect(executeCommand).not.toHaveBeenCalledWith(
 			expect.stringMatching(/metric|enrich/i),
 			expect.anything(),

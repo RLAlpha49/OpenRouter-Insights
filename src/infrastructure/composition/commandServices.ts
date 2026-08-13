@@ -20,6 +20,7 @@ import type { ICommand } from "../commands";
 import {
 	RefreshPricingCommand,
 	BrowseModelsCommand,
+	ShowFavoritesCommand,
 	CompareModelsCommand,
 	SetModelOverrideCommand,
 	ShowLogsCommand,
@@ -81,6 +82,7 @@ export function createCommandServices(
 	// ── Pricing and model commands ─────────────────────────
 	add(new RefreshPricingCommand(deps.doRefresh));
 	add(new BrowseModelsCommand(deps.cache, deps.modelPicker));
+	add(new ShowFavoritesCommand(deps.cache, deps.modelPicker));
 	add(new CompareModelsCommand(deps.cache, deps.modelPicker));
 	add(new SetModelOverrideCommand(deps.cache, deps.modelPicker));
 	add(new ShowLogsCommand());

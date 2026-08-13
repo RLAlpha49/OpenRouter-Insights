@@ -123,10 +123,28 @@ export class BrowseModelsCommand implements ICommand {
 				return;
 			}
 		}
-		const configuredIds = await this._modelPicker.discoverConfiguredModelIds(
-			this._cache.getLookup(),
-		);
-		void this._modelPicker.showModelBrowser(data.models, configuredIds);
+		await this._modelPicker.showModelBrowser(data.models);
+	}
+}
+
+export class ShowFavoritesCommand implements ICommand {
+	readonly id = "openrouter-insights.showFavorites";
+	readonly argAdapter = adaptNoArgs;
+	readonly quickAction = {
+		label: "$(star-full) Show Favorites",
+		description: "Browse your favorited models",
+	};
+	constructor(
+		private readonly _cache: IPricingCache,
+		private readonly _modelPicker: ModelPickerEnhancer,
+	) {}
+	async execute(): Promise<void> {
+		const data = this._cache.get();
+		if (!data) {
+			void vscode.window.showWarningMessage('No pricing data. Run "Refresh Pricing" first.');
+			return;
+		}
+		await this._modelPicker.showFavoriteModels(data.models);
 	}
 }
 
