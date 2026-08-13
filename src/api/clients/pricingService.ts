@@ -698,8 +698,8 @@ function weightedRate(components: Array<[number, number]>): number {
 }
 
 function computeCacheBlend(pm: DisplayPricing, weights: BlendWeights): number | undefined {
-	const hasRead = isValidPrice(pm.inputCacheRead) && pm.inputCacheRead > 0;
-	const hasWrite = isValidPrice(pm.inputCacheWrite) && pm.inputCacheWrite > 0;
+	const hasRead = isValidPrice(pm.inputCacheRead);
+	const hasWrite = isValidPrice(pm.inputCacheWrite);
 	if (!hasRead && !hasWrite) return undefined;
 	const effectiveWeights = effectiveBlendWeights(weights, hasRead, hasWrite);
 

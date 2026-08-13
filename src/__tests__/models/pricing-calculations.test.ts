@@ -70,14 +70,13 @@ describe("blended pricing", () => {
 		expect(computeBlendedRate(pricing)).toBeCloseTo(1.5, 2);
 	});
 	it("moves missing cache pricing to prompt or cache-read pricing", () => {
-		expect(computeBlendedRate({ ...pricing, inputCacheRead: 0 })).toBeCloseTo(2.3, 2);
-		expect(computeBlendedRate({ ...pricing, inputCacheRead: 0, inputCacheWrite: 0 })).toBeCloseTo(
-			2.3,
-			2,
-		);
+		expect(computeBlendedRate({ ...pricing, inputCacheRead: Number.NaN })).toBeCloseTo(2.3, 2);
+		expect(
+			computeBlendedRate({ ...pricing, inputCacheRead: Number.NaN, inputCacheWrite: Number.NaN }),
+		).toBeCloseTo(2.3, 2);
 		expect(
 			computeBlendedRate(
-				{ ...pricing, inputCacheRead: 0, inputCacheWrite: 0 },
+				{ ...pricing, inputCacheRead: Number.NaN, inputCacheWrite: Number.NaN },
 				{
 					prompt: 0.1,
 					completion: 0.05,
@@ -90,7 +89,7 @@ describe("blended pricing", () => {
 	it("supports custom blend weights and free pricing", () => {
 		expect(
 			computeBlendedRate(
-				{ ...pricing, inputCacheRead: 0, inputCacheWrite: 0 },
+				{ ...pricing, inputCacheRead: Number.NaN, inputCacheWrite: Number.NaN },
 				{
 					prompt: 0.5,
 					completion: 0.25,
@@ -108,6 +107,18 @@ describe("blended pricing", () => {
 				inputCacheWrite: 0,
 			}),
 		).toBe(0);
+	});
+	it("keeps a zero-priced cache-read component available", () => {
+		expect(computeBlendedRate({ ...pricing, inputCacheRead: 0, inputCacheWrite: 2 })).toBeCloseTo(
+			0.7,
+			2,
+		);
+	});
+	it("keeps zero-priced read and write cache components available", () => {
+		expect(computeBlendedRate({ ...pricing, inputCacheRead: 0, inputCacheWrite: 0 })).toBeCloseTo(
+			0.6,
+			2,
+		);
 	});
 });
 

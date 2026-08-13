@@ -196,7 +196,7 @@ Each feature is enabled by default:
 
 The blended estimate shows an approximate cost per million tokens:
 
-- Models with cache pricing use the configured cache-read, prompt, completion, and cache-write weights. The defaults are 80%, 10%, 5%, and 5%.
+- Models with cache pricing use the configured cache-read, prompt, completion, and cache-write weights. The defaults are 80%, 10%, 5%, and 5%. A finite zero cache price is valid and remains part of the estimate.
 - Models without cache pricing use the prompt and completion weights normalized over those two values. The defaults are 66.7% and 33.3%.
 
 > Actual cost varies with cache-hit rate, conversation length, and model behavior. Treat the blended rate as an estimate.
