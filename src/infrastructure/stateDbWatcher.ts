@@ -77,10 +77,7 @@ export function createStateDbWatcher(onChange: () => void): vscode.Disposable {
 				const currentId = resolution.model?.identifier;
 				if (currentId !== lastModelId) {
 					lastModelId = currentId;
-					log.info(
-						"[stateDB watcher] model changed:",
-						currentId ? `to "${currentId}"` : "to undefined",
-					);
+					log.info("[stateDB watcher] model selection changed");
 					onChange();
 				}
 			} catch (err) {
@@ -143,7 +140,7 @@ export function createStateDbWatcher(onChange: () => void): vscode.Disposable {
 		scheduleCheck("wal-delete");
 	});
 
-	log.info("createStateDbWatcher: watching", dbPath);
+	log.info("createStateDbWatcher: watching state database");
 
 	return {
 		dispose: () => {

@@ -112,7 +112,7 @@ export class StateDbReader {
 
 	private async _resolveOnce(logger?: StateReaderLogger): Promise<StateDbResolution> {
 		const dbPath = findStateDb();
-		logger?.("[StateDbReader] dbPath=" + String(dbPath));
+		logger?.("[StateDbReader] state database located");
 		if (!dbPath) {
 			this._lastDiagnostic = "not-found";
 			this._lastResult = undefined;
@@ -172,7 +172,7 @@ export class StateDbReader {
 				diagnostic: valuesResult.diagnostic,
 			};
 			const panelId = parseModelIdentifier(panelResult.value);
-			logger?.(`[StateDbReader] panel model id = ${panelId ?? "undefined"}`);
+			logger?.(`[StateDbReader] panel model lookup: ${panelId ? "found" : "not found"}`);
 			if (!canContinueAfter(panelResult.diagnostic)) {
 				this._lastResult = undefined;
 				this._lastResultAt = 0;

@@ -93,6 +93,22 @@ describe("state database reader", () => {
 		});
 	});
 
+	it("does not log the local path or resolved model identifier", async () => {
+		const dbPath = path.join(process.cwd(), "private-state.vscdb");
+		vi.mocked(findStateDb).mockReturnValue(dbPath);
+		vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1, size: 4 } as fs.Stats);
+		vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
+		readSingleMock.mockReturnValue({ value: "openai/private-model", diagnostic: "ok" });
+		const messages: string[] = [];
+
+		await resolveActiveModelFromCopilotState((message) => messages.push(message));
+
+		const output = messages.join("\n");
+		expect(output).not.toContain(dbPath);
+		expect(output).not.toContain("openai/private-model");
+		expect(output).toContain("state database located");
+	});
+
 	it("falls back to the recently used model when no panel model exists", async () => {
 		const dbPath = path.join(process.cwd(), "state-recent.vscdb");
 		vi.mocked(findStateDb).mockReturnValue(dbPath);

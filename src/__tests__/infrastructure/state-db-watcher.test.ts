@@ -88,6 +88,22 @@ describe("state database watcher", () => {
 		expect(onChange).toHaveBeenCalledTimes(2);
 	});
 
+	it("does not log the watched path or resolved model identifier", async () => {
+		const onChange = vi.fn();
+		(resolveActiveModelFromCopilotState as any).mockImplementation(
+			makeResolve("openai/private-model"),
+		);
+		const info = vi.spyOn((await import("../../infrastructure/logger")).log, "info");
+		createStateDbWatcher(onChange);
+
+		await trigger("change");
+
+		const output = info.mock.calls.flat().join(" ");
+		expect(output).not.toContain("/state/state.vscdb");
+		expect(output).not.toContain("openai/private-model");
+		expect(output).toContain("state database");
+	});
+
 	it("coalesces a burst of change events into a single model check", async () => {
 		const onChange = vi.fn();
 		(resolveActiveModelFromCopilotState as any).mockImplementation(makeResolve("openai/gpt-4o"));
