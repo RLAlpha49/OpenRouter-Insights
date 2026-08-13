@@ -7,25 +7,27 @@
 	padding: 0;
 }
 :root {
-	color-scheme: dark;
-	--or-bg: #0d1117;
-	--or-surface: #161b22;
-	--or-surface-raised: #1c2128;
-	--or-border: rgba(240, 246, 252, 0.08);
-	--or-border-strong: rgba(240, 246, 252, 0.14);
-	--or-text: #e6edf3;
-	--or-text-dim: #adbac7;
-	--or-muted: #9ba3b0;
-	--or-muted-dim: #7a8290;
-	--or-amber: #f0c674;
+	--or-bg: var(--vscode-editor-background, #0d1117);
+	--or-surface: var(--vscode-sideBar-background, #161b22);
+	--or-surface-raised: var(--vscode-editorWidget-background, #1c2128);
+	--or-border: var(--vscode-panel-border, rgba(240, 246, 252, 0.08));
+	--or-border-strong: var(--vscode-contrastBorder, rgba(240, 246, 252, 0.14));
+	--or-card-surface: var(--vscode-editorWidget-background, var(--or-surface));
+	--or-card-surface-selected: var(--vscode-list-activeSelectionBackground, var(--or-amber-glow));
+	--or-text: var(--vscode-foreground, var(--vscode-editor-foreground, #e6edf3));
+	--or-text-dim: var(--vscode-descriptionForeground, #adbac7);
+	--or-muted: var(--vscode-descriptionForeground, #9ba3b0);
+	--or-muted-dim: var(--vscode-disabledForeground, #7a8290);
+	--or-amber: var(--vscode-charts-yellow, #f0c674);
 	--or-amber-dim: #c9a44c;
 	--or-amber-glow: rgba(240, 198, 116, 0.15);
-	--or-teal: #56d4dd;
+	--or-teal: var(--vscode-textLink-foreground, #56d4dd);
 	--or-teal-dim: #3a9ba3;
 	--or-teal-glow: rgba(86, 212, 221, 0.12);
-	--or-red: #f85149;
-	--or-green: #3fb950;
-	--or-orange: #d29922;
+	--or-red: var(--vscode-errorForeground, #f85149);
+	--or-green: var(--vscode-testing-iconPassed, #3fb950);
+	--or-orange: var(--vscode-editorWarning-foreground, #d29922);
+	--or-focus: var(--vscode-focusBorder, #56d4dd);
 	--or-font-mono:
 		"JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", "Consolas",
 		var(--vscode-editor-font-family), monospace;
@@ -100,9 +102,18 @@ h3 {
 .or-link:focus-visible,
 .or-chart-toggle-btn:focus-visible,
 a:focus-visible {
-	outline: 2px solid var(--or-teal);
+	outline: 2px solid var(--or-focus);
 	outline-offset: 2px;
 	border-radius: 4px;
+}
+
+@media (prefers-color-scheme: light) {
+	:root {
+		--or-border: var(--vscode-panel-border, rgba(0, 0, 0, 0.12));
+		--or-border-strong: var(--vscode-contrastBorder, rgba(0, 0, 0, 0.2));
+		--or-amber-glow: rgba(160, 100, 0, 0.12);
+		--or-teal-glow: rgba(0, 100, 110, 0.1);
+	}
 }
 .or-sr-only {
 	position: absolute;
@@ -544,7 +555,7 @@ a:focus-visible {
 	container-name: key-manager;
 }
 .or-key-card {
-	background: rgba(13, 17, 23, 0.45);
+	background: var(--or-surface-raised);
 	border: 1px solid var(--or-border);
 	border-radius: 8px;
 	overflow: hidden;
@@ -555,12 +566,12 @@ a:focus-visible {
 }
 .or-key-card:hover {
 	border-color: var(--or-border-strong);
-	background: rgba(240, 198, 116, 0.035);
+	background: var(--or-surface-raised);
 	transform: translateY(-1px);
 }
 .or-key-card--selected {
 	border-color: var(--or-amber-dim);
-	background: linear-gradient(135deg, var(--or-amber-glow), rgba(13, 17, 23, 0.5));
+	background: var(--or-surface-raised);
 	box-shadow:
 		0 0 0 1px rgba(240, 198, 116, 0.08),
 		0 8px 24px rgba(0, 0, 0, 0.16);
@@ -681,7 +692,7 @@ a:focus-visible {
 	gap: 4px;
 	padding: 8px 10px 10px;
 	border-top: 1px solid var(--or-border);
-	background: rgba(240, 246, 252, 0.025);
+	background: var(--or-surface);
 	opacity: 0.85;
 	transition: opacity 0.15s;
 }
@@ -757,7 +768,7 @@ a:focus-visible {
 	padding: 13px 14px;
 	border: 1px solid var(--or-border);
 	border-radius: 8px;
-	background: rgba(13, 17, 23, 0.36);
+	background: var(--or-card-surface);
 }
 .or-key-detail-limit-heading,
 .or-key-detail-limit-meta {
@@ -1371,6 +1382,8 @@ a[data-cmd] {
 	font-weight: 500;
 	color: var(--or-text-dim);
 	background: var(--or-surface);
+	border: 1px solid var(--or-border-strong);
+	margin: -1px 0;
 	cursor: pointer;
 	transition:
 		background 0.15s,

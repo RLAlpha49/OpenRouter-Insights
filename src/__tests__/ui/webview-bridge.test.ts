@@ -13,6 +13,10 @@ describe("webview bridge interaction updates", () => {
 		expect(bridgeSource).toContain("restoreInteractionState");
 		expect(bridgeSource).toContain('message?.cmd === "updateRegion"');
 		expect(bridgeSource).toContain("data-region");
+		expect(bridgeSource).toContain("data-focus-id");
+		expect(bridgeSource).toContain("activeFocusId");
+		expect(bridgeSource).toContain("aria-expanded");
+		expect(bridgeSource).toContain("aria-controls");
 	});
 
 	it("validates region messages before changing the DOM", () => {

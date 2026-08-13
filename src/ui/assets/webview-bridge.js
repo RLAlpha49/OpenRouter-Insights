@@ -18,8 +18,23 @@
 		const remaining = list.querySelectorAll(
 			"[data-model-extra='true'][style*='display:none']",
 		).length;
-		if (remaining === 0) button.remove();
-		else button.textContent = "Show more";
+		button.setAttribute("aria-expanded", hidden.length > 0 ? "true" : "false");
+		const controlledList = button.getAttribute("aria-controls");
+		if (!controlledList) return;
+		if (remaining === 0) {
+			const focusTarget = hidden[0] || list;
+			button.remove();
+			if (focusTarget instanceof HTMLElement) {
+				if (!focusTarget.hasAttribute("tabindex")) focusTarget.setAttribute("tabindex", "-1");
+				focusTarget.focus();
+			}
+		} else {
+			button.setAttribute(
+				"aria-label",
+				"Show " + remaining + " more model" + (remaining === 1 ? "" : "s"),
+			);
+			button.textContent = "Show more";
+		}
 	}
 	function initializeModelSpend() {
 		document.querySelectorAll(".or-model-show-more").forEach(function (button) {
@@ -74,6 +89,7 @@
 		);
 		return {
 			scrollY: window.scrollY,
+			activeFocusId: active?.closest?.("[data-focus-id]")?.dataset.focusId,
 			activeKey: active?.closest?.("[data-key-focus]")?.dataset.keyFocus,
 			activeModel: active?.closest?.("[data-model-id]")?.dataset.modelId,
 			revealedModels: Array.from(root.querySelectorAll("[data-model-extra='true']"))
@@ -119,7 +135,11 @@
 		});
 		initializeModelSpend();
 		let focusTarget = null;
-		if (state.activeKey) {
+		if (state.activeFocusId) {
+			focusTarget = Array.from(root.querySelectorAll("[data-focus-id]")).find(function (element) {
+				return element.dataset.focusId === state.activeFocusId;
+			});
+		} else if (state.activeKey) {
 			focusTarget = Array.from(root.querySelectorAll("[data-key-focus]")).find(function (element) {
 				return element.dataset.keyFocus === state.activeKey;
 			});

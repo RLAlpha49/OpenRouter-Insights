@@ -237,15 +237,16 @@ function buildAnalyticsSection(
 			</div>`;
 		})
 		.join("");
-	const remaining = analytics.modelBreakdown.length;
+	const remaining = Math.max(0, analytics.modelBreakdown.length - 2);
+	const moreLabel = remaining === 1 ? "model" : "models";
 	const showMore =
 		remaining > 0
-			? `<button type="button" class="or-btn or-btn--subtle or-model-show-more" data-reveal-model-rows="2" aria-label="Show more model rows">Show more</button>`
+			? `<button type="button" class="or-btn or-btn--subtle or-model-show-more" data-reveal-model-rows="2" data-focus-id="show-more-models" aria-controls="or-model-spend-list" aria-expanded="false" aria-label="Show ${remaining} more ${moreLabel}">Show more</button>`
 			: "";
 	const truncationNotice = analytics.truncated
 		? `<p class="or-info" data-analytics-truncated="true">Showing the top ${analytics.modelBreakdown.length.toLocaleString()} models. This account has more models than the ${(analytics.rowLimit ?? analytics.modelBreakdown.length).toLocaleString()}-row analytics budget, so totals here are not the complete account breakdown.</p>`
 		: "";
-	return `<div class="or-card or-analytics-card"><div class="or-section-head"><div><h3>Spend by Model</h3><span class="or-section-kicker">${analytics.modelBreakdown.length} models · ${analytics.totalRequests.toLocaleString()} requests</span></div><span class="or-info">${analytics.overallCacheHitRate.toFixed(1)}% cache hit</span></div>${truncationNotice}<div class="or-model-spend-list">${rows}</div>${showMore}</div>`;
+	return `<div class="or-card or-analytics-card"><div class="or-section-head"><div><h3>Spend by Model</h3><span class="or-section-kicker">${analytics.modelBreakdown.length} models · ${analytics.totalRequests.toLocaleString()} requests</span></div><span class="or-info">${analytics.overallCacheHitRate.toFixed(1)}% cache hit</span></div>${truncationNotice}<div id="or-model-spend-list" class="or-model-spend-list" tabindex="-1">${rows}</div>${showMore}</div>`;
 }
 
 function capabilityMessage(status: string, label: string): string {
@@ -406,7 +407,7 @@ function buildKeySelectorSection(usage: UsageStats, fmtUsd: FmtUsd): string {
 					: `<div class="or-key-meter"><span style="width:${usagePercent}%;background:${pctColor(k.usagePercent)}"></span></div>`;
 			const limitLabel = k.limit === null ? "Unlimited" : `${fmtUsd(k.limit)} limit`;
 			return `<article class="${cardClass}" data-key-hash="${attr(k.hash)}">
-					<button type="button" data-cmd="openrouter-insights.selectUsageKey" data-hash="${attr(k.hash)}" data-key-focus="${attr(k.hash)}" class="or-key-card-main" tabindex="${selected ? "0" : "-1"}" aria-label="Select key ${attr(k.name || k.label || "unnamed")}" aria-pressed="${selected ? "true" : "false"}">
+					<button type="button" data-cmd="openrouter-insights.selectUsageKey" data-hash="${attr(k.hash)}" data-key-focus="${attr(k.hash)}" data-focus-id="select-key-${attr(k.hash)}" class="or-key-card-main" tabindex="${selected ? "0" : "-1"}" aria-label="Select key ${attr(k.name || k.label || "unnamed")}" aria-pressed="${selected ? "true" : "false"}">
 						<div class="or-key-card-heading">
 							<div class="or-key-card-title"><strong>${text(k.name || "Unnamed key")}</strong><span class="or-key-card-label">${text(k.label)}</span></div>
 							<span class="or-key-status ${statusClass}"><i aria-hidden="true"></i>${statusLabel}</span>
@@ -446,9 +447,9 @@ function buildActionsFooter(wide: boolean): string {
 		: '<button type="button" data-cmd="openrouter-insights.openExpandedDashboard" class="or-btn">⤢ Expand</button>';
 	return `
 	<div class="or-actions">
-		<button type="button" data-cmd="openrouter-insights.refreshUsage" class="or-btn">↻ Refresh</button>
+		<button type="button" data-cmd="openrouter-insights.refreshUsage" data-focus-id="refresh-usage" class="or-btn">↻ Refresh</button>
 		${expandBtn}
-		<button type="button" data-cmd="openrouter-insights.setApiKey" class="or-btn">⬗ Change Key</button>
+		<button type="button" data-cmd="openrouter-insights.setApiKey" data-focus-id="set-api-key" class="or-btn">⬗ Change Key</button>
 	</div>`;
 }
 
@@ -601,8 +602,8 @@ function buildNoKeyHtmlWide(): string {
 }
 
 function buildLoadingBody(progressText?: string): string {
-	return `<div class="or-center">
-			<div class="or-spinner"></div>
+	return `<div class="or-center" role="status" aria-live="polite">
+			<div class="or-spinner" aria-hidden="true"></div>
 			<p>${text(progressText ?? "Loading usage data…")}</p>
 		</div>`;
 }
@@ -624,10 +625,10 @@ function buildNoDataHtml(): string {
 }
 
 function buildErrorBody(message: string): string {
-	return `<div class="or-center">
+	return `<div class="or-center" role="alert">
 			<p class="or-error-text">⚠ Error loading usage data</p>
 			<p class="or-info">${text(message)}</p>
-			<button type="button" data-cmd="openrouter-insights.refreshUsage" class="or-btn or-btn--primary">↻ Retry</button>
+			<button type="button" data-cmd="openrouter-insights.refreshUsage" data-focus-id="retry-usage" class="or-btn or-btn--primary">↻ Retry</button>
 		</div>`;
 }
 

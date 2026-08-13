@@ -50,6 +50,9 @@ describe("UsageDashboardProvider", () => {
 		provider.resolveWebviewView(view as any, {} as any, {} as any);
 
 		expect(view.webview.html).toContain('class="or-spinner"');
+		expect(view.webview.html).toContain('role="status"');
+		expect(view.webview.html).toContain('aria-live="polite"');
+		expect(view.webview.html).toContain('aria-hidden="true"');
 		expect(view.webview.html).toContain("Loading usage data…");
 		expect(executeCommand).toHaveBeenCalledWith("openrouter-insights.refreshUsage");
 	});
@@ -167,6 +170,25 @@ describe("UsageDashboardProvider", () => {
 		);
 		expect(panel.webview.html).toContain("Connect your OpenRouter account");
 		expect(source.postMessage).toHaveBeenCalled();
+	});
+
+	it("marks initial errors as alerts with a recovery action", () => {
+		const provider = new UsageDashboardProvider();
+		const posted: unknown[] = [];
+		const view = {
+			webview: {
+				options: {},
+				html: "",
+				postMessage: vi.fn(async (message: unknown) => posted.push(message)),
+				onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+			},
+			onDidDispose: (_listener: () => void) => ({ dispose: vi.fn() }),
+		};
+		provider.resolveWebviewView(view as any, {} as any, {} as any);
+		provider.renderError("Request failed");
+		const update = posted.find((message: any) => message.cmd === "updateHtml") as any;
+		expect(update.html).toContain('role="alert"');
+		expect(update.html).toContain("Retry");
 	});
 
 	it("keeps selection while loading missing usage details", async () => {

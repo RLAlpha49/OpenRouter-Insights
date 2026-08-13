@@ -56,6 +56,10 @@ describe("webview theme", () => {
 		expect(css).toContain("<style>");
 		expect(css).toContain("--or-bg:");
 		expect(css).toContain("--or-surface:");
+		expect(css).toContain("--vscode-editor-background");
+		expect(css).toContain("--vscode-foreground");
+		expect(css).toContain("--vscode-focusBorder");
+		expect(css).not.toContain("color-scheme: dark");
 	});
 });
 
@@ -87,6 +91,28 @@ describe("dashboard document security", () => {
 		);
 		expect(html).not.toContain('role="button"');
 		expect(html).not.toContain("script-src");
+	});
+
+	it("exposes model spend disclosure semantics", () => {
+		const html = buildDashboardBody(
+			makeUsage({
+				analytics: {
+					modelBreakdown: [
+						{ modelId: "one", totalUsage: 1, percentage: 50, requestCount: 1, tokensTotal: 1 },
+						{ modelId: "two", totalUsage: 1, percentage: 25, requestCount: 1, tokensTotal: 1 },
+						{ modelId: "three", totalUsage: 1, percentage: 25, requestCount: 1, tokensTotal: 1 },
+					],
+					totalRequests: 3,
+					overallCacheHitRate: 0,
+					truncated: false,
+				} as any,
+			}),
+			false,
+		);
+		expect(html).toContain('id="or-model-spend-list"');
+		expect(html).toContain('aria-controls="or-model-spend-list"');
+		expect(html).toContain('aria-expanded="false"');
+		expect(html).toContain("more model");
 	});
 });
 
