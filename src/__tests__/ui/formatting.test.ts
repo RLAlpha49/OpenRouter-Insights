@@ -16,8 +16,15 @@ describe("shared UI date formatting", () => {
 		expect(formatDateOnly("2026-08-01T23:30:00-05:00")).toBe("Aug 2, 2026");
 	});
 
-	it("formats timestamps with an explicit UTC time zone", () => {
-		expect(formatTimestamp("2026-08-02T00:30:00Z")).toBe("Aug 2, 2026, 12:30 AM");
+	it("formats timestamps in the user's local time zone", () => {
+		const expected = new Intl.DateTimeFormat("en-US", {
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+			hour: "numeric",
+			minute: "2-digit",
+		}).format(new Date("2026-08-02T00:30:00Z"));
+		expect(formatTimestamp("2026-08-02T00:30:00Z")).toBe(expected);
 	});
 
 	it("returns a stable fallback for invalid dates", () => {

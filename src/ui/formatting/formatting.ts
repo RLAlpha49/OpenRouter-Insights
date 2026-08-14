@@ -22,7 +22,6 @@ const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
 	day: "numeric",
 });
 const TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
-	timeZone: "UTC",
 	month: "short",
 	day: "numeric",
 	year: "numeric",
@@ -51,7 +50,7 @@ export function formatShortDateLabel(value: string): string {
 	return date ? SHORT_DATE_FORMATTER.format(date) : "—";
 }
 
-/** Format a timestamp with a stable UTC time zone and locale. */
+/** Format a timestamp using the user's local time zone and locale. */
 export function formatTimestamp(value: string | number | Date): string {
 	const date = toValidDate(value);
 	return date ? TIMESTAMP_FORMATTER.format(date) : "—";
