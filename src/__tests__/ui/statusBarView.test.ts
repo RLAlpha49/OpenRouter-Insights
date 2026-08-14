@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { StatusBarView } from "../../ui/status/statusBarView";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const LOADING_TEXT = "$(loading~spin) Refreshing…";
 
