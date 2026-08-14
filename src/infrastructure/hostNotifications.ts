@@ -10,9 +10,26 @@
 import * as vscode from "vscode";
 import type { PricingRefreshPresenter, StatusNotifier } from "../use-cases/ports";
 
+/** How long an information notification stays on screen before auto-dismissing. */
+const INFO_AUTO_DISMISS_MS = 4000;
+
+/**
+ * Information notifications are transient and should disappear on their own.
+ * `showInformationMessage` never auto-dismisses, so we surface it as a
+ * `withProgress` notification that resolves (and closes) after a short delay.
+ */
+function showAutoDismissingInfo(message: string): void {
+	void vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: message },
+		async () => {
+			await new Promise((resolve) => setTimeout(resolve, INFO_AUTO_DISMISS_MS));
+		},
+	);
+}
+
 /** Notification port backed by the VS Code window API. */
 export const vscodeStatusNotifier: StatusNotifier = {
-	info: (message: string) => void vscode.window.showInformationMessage(message),
+	info: (message: string) => showAutoDismissingInfo(message),
 	warning: (message: string) => void vscode.window.showWarningMessage(message),
 	error: (message: string) => void vscode.window.showErrorMessage(message),
 };
