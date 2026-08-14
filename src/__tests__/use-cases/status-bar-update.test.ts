@@ -111,6 +111,16 @@ describe("StatusBarUpdateUseCase", () => {
 		expect(shown).toHaveLength(0);
 	});
 
+	it("uses Quick Actions for the configured status-bar click action", async () => {
+		const cache = createFakeCache();
+		const config = createFakeReadonlyConfig({ statusBarClickAction: "quickActions" });
+		const useCase = new StatusBarUpdateUseCase(cache, statusBar, modelPicker, config, eventBus);
+
+		await useCase.execute();
+
+		expect(statusBar.setCommand).toHaveBeenCalledWith("openrouter-insights.showQuickActions");
+	});
+
 	it("coalesces concurrent calls", async () => {
 		const cache = createFakeCache();
 		const config = createFakeReadonlyConfig();

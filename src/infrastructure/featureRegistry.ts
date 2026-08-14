@@ -60,14 +60,15 @@ const FEATURE_COMMAND_PREFIXES: Record<FeatureId, string[]> = {
 /** Commands that are always registered regardless of feature flags. */
 const ALWAYS_ENABLED_COMMANDS = new Set([
 	"openrouter-insights.refreshPricing",
-	"openrouter-insights.showLogs",
 	"openrouter-insights.showQuickActions",
-	"openrouter-insights.copyModelId",
-	"openrouter-insights.openOnOpenRouter",
 	"openrouter-insights.viewModelDetail",
-	"openrouter-insights.clearSelectedModel",
+]);
+
+const DEVELOPER_COMMANDS = new Set([
+	"openrouter-insights.showLogs",
 	"openrouter-insights.clearCache",
 	"openrouter-insights.showCacheInfo",
+	"openrouter-insights.showRuntimeDiagnostics",
 ]);
 
 export class FeatureRegistry implements vscode.Disposable {
@@ -95,6 +96,11 @@ export class FeatureRegistry implements vscode.Disposable {
 			"setContext",
 			"openrouter-insights:usageDashboardEnabled",
 			showDashboard && this.isEnabled("usage"),
+		);
+		void vscode.commands.executeCommand(
+			"setContext",
+			"openrouter-insights:general.developerMode",
+			ConfigService.instance.developerMode,
 		);
 	}
 
@@ -127,6 +133,7 @@ export class FeatureRegistry implements vscode.Disposable {
 
 	/** Returns true if the given command should be registered. */
 	shouldRegisterCommand(commandId: string): boolean {
+		if (DEVELOPER_COMMANDS.has(commandId)) return ConfigService.instance.developerMode;
 		if (ALWAYS_ENABLED_COMMANDS.has(commandId)) return true;
 		if (
 			(commandId === "openrouter-insights.openUsageDashboard" ||

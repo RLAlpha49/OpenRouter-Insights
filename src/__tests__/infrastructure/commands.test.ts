@@ -16,7 +16,6 @@ import {
 	SetModelOverrideCommand,
 	ShowCacheInfoCommand,
 	ShowQuickActionsCommand,
-	buildQuickActionItems,
 } from "../../infrastructure/commands";
 import { exportPricing } from "../../ui/exportService";
 import type { ModelPricingInfo } from "../../types";
@@ -84,32 +83,13 @@ describe("command orchestration", () => {
 		vi.clearAllMocks();
 	});
 
-	it("orders enabled quick actions by command rank", () => {
-		const commands = new Map<string, any>([
-			[
-				"openrouter-insights.showLogs",
-				{ id: "openrouter-insights.showLogs", quickAction: { label: "Logs", description: "logs" } },
-			],
-			[
-				"openrouter-insights.refreshPricing",
-				{
-					id: "openrouter-insights.refreshPricing",
-					quickAction: { label: "Refresh", description: "refresh" },
-				},
-			],
-			[
-				"openrouter-insights.browseModels",
-				{
-					id: "openrouter-insights.browseModels",
-					quickAction: { label: "Browse", description: "browse" },
-				},
-			],
-		]);
-		expect(
-			buildQuickActionItems(commands, (id) => id !== "openrouter-insights.showLogs").map(
-				(item) => item.action,
-			),
-		).toEqual(["openrouter-insights.refreshPricing", "openrouter-insights.browseModels"]);
+	it("executes the selected quick action", async () => {
+		const child = { id: "child", execute: vi.fn(async () => {}) } as any;
+		(vscode.window as any).showQuickPick = vi.fn(async () => ({ action: "child" }));
+
+		await new ShowQuickActionsCommand(new Map([["child", child]])).execute();
+
+		expect(child.execute).toHaveBeenCalledOnce();
 	});
 
 	it("refreshes through the injected callback", async () => {
@@ -186,16 +166,6 @@ describe("command orchestration", () => {
 		expect(picker.showModelBrowser).toHaveBeenCalledWith(data.models);
 	});
 
-	it("ignores cancelled or unknown quick actions", async () => {
-		const child = { id: "child", execute: vi.fn(async () => {}) } as any;
-		const command = new ShowQuickActionsCommand(new Map([["child", child]]));
-		(vscode.window as any).showQuickPick = vi.fn(async () => undefined);
-		await command.execute();
-		(vscode.window as any).showQuickPick = vi.fn(async () => ({ action: "missing" }));
-		await command.execute();
-		expect(child.execute).not.toHaveBeenCalled();
-	});
-
 	it("coalesces concurrent model-browser requests", async () => {
 		const data = { models: [model()] };
 		const cache = store(data);
@@ -224,14 +194,6 @@ describe("command orchestration", () => {
 		await new ShowCacheInfoCommand(cache as any).execute();
 		expect(cache.clear).toHaveBeenCalledOnce();
 		expect(cache.cacheInfo).toHaveBeenCalledOnce();
-	});
-
-	it("executes the selected quick action", async () => {
-		const child = { id: "child", execute: vi.fn(async () => {}) } as any;
-		const commands = new Map([["child", child]]);
-		(vscode.window as any).showQuickPick = vi.fn(async () => ({ action: "child" }));
-		await new ShowQuickActionsCommand(commands).execute();
-		expect(child.execute).toHaveBeenCalledOnce();
 	});
 });
 

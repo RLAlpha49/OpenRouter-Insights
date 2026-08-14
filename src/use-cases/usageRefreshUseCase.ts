@@ -202,9 +202,6 @@ export class UsageRefreshUseCase {
 			case "sidebarDashboard":
 				this._statusBar.setCommand("openrouter-insights.openUsageDashboard");
 				break;
-			case "quickActions":
-				this._statusBar.setCommand("openrouter-insights.showQuickActions");
-				break;
 		}
 	}
 

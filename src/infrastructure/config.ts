@@ -25,6 +25,7 @@ export function initConfigLogger(logger: ConfigLogger): void {
  */
 export interface ReadonlyConfig {
 	readonly features: Readonly<Record<FeatureId, boolean>>;
+	readonly developerMode: boolean;
 	readonly autoRefreshInterval: number;
 	readonly showInStatusBar: boolean;
 	readonly statusBarMaxWidth: number;
@@ -58,7 +59,7 @@ export type ProviderFilter = "openrouterOnly" | "allProviders";
 
 export type StatusBarClickAction = "browseModels" | "refreshPricing" | "showLogs" | "quickActions";
 
-export type UsageStatusBarClickAction = "fullDashboard" | "sidebarDashboard" | "quickActions";
+export type UsageStatusBarClickAction = "fullDashboard" | "sidebarDashboard";
 
 export type ModelBrowserSort =
 	"blendedRate" | "promptPrice" | "completionPrice" | "contextLength" | "name";
@@ -303,6 +304,10 @@ export class ConfigService implements vscode.Disposable, ReadonlyConfig {
 		) as Readonly<Record<FeatureId, boolean>>;
 	}
 
+	get developerMode(): boolean {
+		return this._get<boolean>("general.developerMode", false);
+	}
+
 	isFeatureEnabled(feature: FeatureId): boolean {
 		return this._get<boolean>(`features.${feature}.enabled`, true, (value) => {
 			if (typeof value !== "boolean") {
@@ -444,6 +449,7 @@ export class ConfigService implements vscode.Disposable, ReadonlyConfig {
 				);
 				return "browseModels";
 			}
+			if (v === "showLogs" && !this.developerMode) return "browseModels";
 			return v;
 		});
 	}
@@ -577,11 +583,7 @@ export class ConfigService implements vscode.Disposable, ReadonlyConfig {
 	}
 
 	get usageStatusBarClickAction(): UsageStatusBarClickAction {
-		const validActions = new Set<UsageStatusBarClickAction>([
-			"fullDashboard",
-			"sidebarDashboard",
-			"quickActions",
-		]);
+		const validActions = new Set<UsageStatusBarClickAction>(["fullDashboard", "sidebarDashboard"]);
 		return this._get<UsageStatusBarClickAction>(
 			"usage.statusBarClickAction",
 			"fullDashboard",

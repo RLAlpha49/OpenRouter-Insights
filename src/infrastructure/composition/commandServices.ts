@@ -24,6 +24,7 @@ import {
 	CompareModelsCommand,
 	SetModelOverrideCommand,
 	ShowLogsCommand,
+	ShowQuickActionsCommand,
 	ToggleStatusBarCommand,
 	ExportCsvCommand,
 	ExportJsonCommand,
@@ -31,11 +32,9 @@ import {
 	RemoveFromFavoritesCommand,
 	CopyModelIdCommand,
 	OpenOnOpenRouterCommand,
-	ShowQuickActionsCommand,
 	ClearCacheCommand,
 	ShowCacheInfoCommand,
 	ViewModelDetailCommand,
-	ClearSelectedModelCommand,
 	ShowRuntimeDiagnosticsCommand,
 } from "../commands";
 import {
@@ -87,6 +86,11 @@ export function createCommandServices(
 	add(new CompareModelsCommand(deps.cache, deps.modelPicker));
 	add(new SetModelOverrideCommand(deps.cache, deps.modelPicker));
 	add(new ShowLogsCommand());
+	add(
+		new ShowQuickActionsCommand(commands, (commandId) =>
+			deps.features.shouldRegisterCommand(commandId),
+		),
+	);
 	add(new ToggleStatusBarCommand(deps.statusBar));
 	add(new ExportCsvCommand(deps.cache));
 	add(new ExportJsonCommand(deps.cache));
@@ -94,16 +98,10 @@ export function createCommandServices(
 	add(new RemoveFromFavoritesCommand());
 	add(new CopyModelIdCommand(deps.cache, deps.modelPicker, deps.eventBus));
 	add(new OpenOnOpenRouterCommand(deps.cache, deps.modelPicker));
-	add(
-		new ShowQuickActionsCommand(commands, (commandId) =>
-			deps.features.shouldRegisterCommand(commandId),
-		),
-	);
 	add(new ClearCacheCommand(deps.cache));
 	add(new ShowCacheInfoCommand(deps.cache, deps.diagnostics));
 	add(new ShowRuntimeDiagnosticsCommand(deps.diagnostics));
 	add(new ViewModelDetailCommand(deps.cache, deps.modelPicker));
-	add(new ClearSelectedModelCommand());
 
 	// ── Usage and key-management commands ──────────────────
 	add(new SetApiKeyCommand(deps.secrets, deps.doUsageRefresh));

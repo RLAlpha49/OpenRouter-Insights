@@ -14,6 +14,7 @@ import { ConfiguredModelDiscovery } from "./configuredModelDiscovery";
 import { costIcon } from "./costIconFactory";
 import { showComparisonWebview } from "./comparisonViewService";
 import {
+	ConfigService,
 	getShowFreeModelsOnly,
 	getModelBrowserSort,
 	getFavoriteModels,
@@ -40,7 +41,8 @@ function browserBadgePrefix(model: ModelPricingInfo): string {
 }
 
 interface ModelQuickPickItem extends vscode.QuickPickItem {
-	modelInfo: ModelPricingInfo;
+	modelInfo?: ModelPricingInfo;
+	isClearOverride?: boolean;
 }
 
 export class ModelPickerEnhancer {
@@ -149,7 +151,9 @@ export class ModelPickerEnhancer {
 		const selected = await new Promise<ModelPricingInfo[]>((resolve) => {
 			let resolved = false;
 			qp.onDidAccept(() => {
-				const picked = qp.selectedItems.map((i) => i.modelInfo);
+				const picked = qp.selectedItems
+					.map((i) => i.modelInfo)
+					.filter((model): model is ModelPricingInfo => model !== undefined);
 				if (picked.length < 2 || picked.length > 5) {
 					void vscode.window.showWarningMessage("Select 2–5 models to compare.");
 					return;
@@ -198,6 +202,11 @@ export class ModelPickerEnhancer {
 				iconPath: costIcon(m.blendedRate),
 			};
 		});
+		items.unshift({
+			label: "$(clear-all) Clear Model Override",
+			description: "Return to automatic model detection",
+			isClearOverride: true,
+		});
 
 		const qp = vscode.window.createQuickPick<ModelQuickPickItem>();
 		qp.title = "Set Model Override";
@@ -213,6 +222,14 @@ export class ModelPickerEnhancer {
 			const selected = qp.selectedItems[0];
 			if (!selected) return;
 			disposeOnce();
+			if (selected.isClearOverride) {
+				await setSelectedModelId("");
+				void vscode.window.showInformationMessage(
+					"Model override cleared. Automatic model detection restored.",
+				);
+				return;
+			}
+			if (!selected.modelInfo) return;
 
 			await setSelectedModelId(selected.modelInfo.id);
 
@@ -232,12 +249,12 @@ export class ModelPickerEnhancer {
 function buildModelButtons(_m: ModelPricingInfo, isFavorite: boolean): vscode.QuickInputButton[] {
 	const buttons: vscode.QuickInputButton[] = [
 		{ iconPath: new vscode.ThemeIcon("link-external"), tooltip: "Open on OpenRouter" },
+		{ iconPath: new vscode.ThemeIcon("copy"), tooltip: "Copy Model ID" },
 	];
-	buttons.push(
-		isFavorite
-			? { iconPath: new vscode.ThemeIcon("star-delete"), tooltip: "Remove from Favorites" }
-			: { iconPath: new vscode.ThemeIcon("star-add"), tooltip: "Add to Favorites" },
-	);
+	buttons.push({
+		iconPath: new vscode.ThemeIcon(isFavorite ? "star-full" : "star-empty"),
+		tooltip: "Toggle Favorite",
+	});
 	return buttons;
 }
 
@@ -376,16 +393,25 @@ function showQuickPick(
 	});
 
 	qp.onDidTriggerItemButton(async (e) => {
+		if (!e.item.modelInfo) return;
 		const modelId = e.item.modelInfo.id;
-		const isStarAdd = e.button.tooltip === "Add to Favorites";
-		const isStarDelete = e.button.tooltip === "Remove from Favorites";
+		const isToggleFavorite = e.button.tooltip === "Toggle Favorite";
+		const isCopyModelId = e.button.tooltip === "Copy Model ID";
 
-		if (isStarAdd) {
-			await vscode.commands.executeCommand("openrouter-insights.addToFavorites", modelId);
-			refreshQuickPickFavorites(qp, modelId, true);
-		} else if (isStarDelete) {
-			await vscode.commands.executeCommand("openrouter-insights.removeFromFavorites", modelId);
-			refreshQuickPickFavorites(qp, modelId, false);
+		if (isToggleFavorite) {
+			const favorites = new Set(getFavoriteModels());
+			const isNowFavorite = !favorites.has(modelId);
+			const next = isNowFavorite
+				? [...favorites, modelId]
+				: [...favorites].filter((id) => id !== modelId);
+			await ConfigService.instance.setFavoriteModels(next);
+			void vscode.window.showInformationMessage(
+				isNowFavorite ? `Added "${modelId}" to favorites` : `Removed "${modelId}" from favorites`,
+			);
+			refreshQuickPickFavorites(qp, modelId, isNowFavorite);
+		} else if (isCopyModelId) {
+			await vscode.env.clipboard.writeText(modelId);
+			void vscode.window.showInformationMessage(`Copied "${modelId}"`);
 		} else {
 			await vscode.env.openExternal(
 				vscode.Uri.parse(`https://openrouter.ai/models/${encodeURI(modelId)}`),
@@ -395,7 +421,7 @@ function showQuickPick(
 
 	qp.onDidAccept(() => {
 		const selected = qp.selectedItems[0];
-		if (selected) {
+		if (selected?.modelInfo) {
 			showModelDetailWebview(selected.modelInfo);
 		}
 		disposeOnce();
@@ -414,6 +440,7 @@ function refreshQuickPickFavorites(
 ): void {
 	const favorites = new Set(getFavoriteModels());
 	qp.items = qp.items.map((item) => {
+		if (!item.modelInfo) return item;
 		if (item.modelInfo.id !== modelId) return item;
 		const isFav = isNowFavorite || favorites.has(item.modelInfo.id);
 		return {

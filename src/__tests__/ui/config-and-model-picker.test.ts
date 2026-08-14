@@ -57,12 +57,13 @@ describe("ConfigService validated access", () => {
 
 	it("reads, clamps, and validates configuration values", async () => {
 		(vscode.workspace as any)._configValues = {
+			"general.developerMode": true,
 			"general.autoRefreshInterval": 1,
 			"statusBar.maxWidth": 150,
 			"general.blendWeights": { prompt: 10, completion: 5, cacheRead: 80, cacheWrite: 5 },
 			"general.providerScope": "allProviders",
 			"general.modelPollInterval": 301,
-			"statusBar.clickAction": "quickActions",
+			"statusBar.clickAction": "showLogs",
 			"modelBrowser.sort": "name",
 			"general.logLevel": "debug",
 			"modelBrowser.favorites": ["a", 1, "a"],
@@ -76,6 +77,7 @@ describe("ConfigService validated access", () => {
 			"usage.statusBarClickAction": "sidebarDashboard",
 		};
 		const cfg = ConfigService.instance;
+		expect(cfg.developerMode).toBe(true);
 		expect(getConfig()).toBeDefined();
 		expect(cfg.features.statusBar).toBe(true);
 		expect(cfg.autoRefreshInterval).toBe(300);
@@ -83,7 +85,7 @@ describe("ConfigService validated access", () => {
 		expect(cfg.blendWeights.prompt).toBeCloseTo(0.1);
 		expect(cfg.providerFilter).toBe("allProviders");
 		expect(cfg.modelPollInterval).toBe(300);
-		expect(cfg.statusBarClickAction).toBe("quickActions");
+		expect(cfg.statusBarClickAction).toBe("showLogs");
 		expect(cfg.modelBrowserSort).toBe("name");
 		expect(cfg.logLevel).toBe("debug");
 		expect(cfg.favoriteModels).toEqual(["a", "a"]);
@@ -256,7 +258,21 @@ describe("ModelPickerEnhancer", () => {
 		const switchPick = (vscode.window as any)._quickPicks.at(-1);
 		switchPick.selectedItems = [{ modelInfo: first }];
 		switchPick.triggerAccept();
-		expect(switchPick.items).toHaveLength(2);
+		expect(switchPick.items).toHaveLength(3);
+	});
+
+	it("clears the model override from the model switcher", async () => {
+		const picker = new ModelPickerEnhancer();
+		const first = model("openai/one");
+		const switcher = picker.showModelSwitcher([first], new Set([first.id]));
+		const quickPick = (vscode.window as any)._quickPicks.at(-1);
+		quickPick.selectedItems = [quickPick.items[0]];
+		quickPick.triggerAccept();
+		await switcher;
+		await Promise.resolve();
+
+		expect(quickPick.items[0].isClearOverride).toBe(true);
+		expect(ConfigService.instance.selectedModelId).toBe("");
 	});
 
 	it("opens browsers and handles favorite buttons", async () => {
@@ -269,11 +285,11 @@ describe("ModelPickerEnhancer", () => {
 		browserPick.triggerAccept();
 		browserPick.triggerButton({
 			item: { modelInfo: first },
-			button: { tooltip: "Add to Favorites" },
+			button: { tooltip: "Toggle Favorite" },
 		});
 		browserPick.triggerButton({
 			item: { modelInfo: first },
-			button: { tooltip: "Remove from Favorites" },
+			button: { tooltip: "Copy Model ID" },
 		});
 		browserPick.triggerButton({
 			item: { modelInfo: first },
@@ -329,7 +345,8 @@ describe("ModelPickerEnhancer", () => {
 		expect(item.buttons).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ tooltip: "Open on OpenRouter" }),
-				expect.objectContaining({ tooltip: "Add to Favorites" }),
+				expect.objectContaining({ tooltip: "Copy Model ID" }),
+				expect.objectContaining({ tooltip: "Toggle Favorite" }),
 			]),
 		);
 		(vscode.window as any)._quickPicks.at(-1).triggerHide();

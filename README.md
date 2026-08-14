@@ -32,7 +32,7 @@ Pricing works without an API key. Usage features require an OpenRouter API key.
 - **Automatic model detection** — Read Copilot's active model from its local SQLite state database. A file watcher and polling fallback detect changes.
 - **Model browser** — Browse OpenRouter models with sorting, favorites, and free/deprecated filters.
 - **Model details and comparison** — Open a detail view for one model or compare two models side by side.
-- **Model actions** — Set or clear an override, copy a model ID, open a model on OpenRouter, and inspect or clear the pricing cache.
+- **Model actions** — Set or clear an override, copy a model ID, open a model on OpenRouter, and inspect or clear the pricing cache. Use **Quick Actions** for common commands from one menu.
 - **Model picker enhancement** — Show pricing badges and hover details for OpenRouter model IDs.
 - **Refresh and cache controls** — Refresh pricing manually or on a schedule. The extension caches pricing locally for a configurable time.
 - **Export** — Export pricing data as CSV or JSON.
@@ -143,7 +143,7 @@ All settings use the `openrouterInsights` prefix.
 
 - `openrouterInsights.statusBar.show` (`boolean`, default `true`) — Show pricing in the VS Code status bar.
 - `openrouterInsights.statusBar.maxWidth` (`number`, default `0`) — Set the maximum number of model-name characters. `0` lets VS Code handle overflow.
-- `openrouterInsights.statusBar.clickAction` (`string`, default `browseModels`) — Choose `browseModels`, `refreshPricing`, `showLogs`, or `quickActions`.
+- `openrouterInsights.statusBar.clickAction` (`string`, default `browseModels`) — Choose `browseModels`, `refreshPricing`, `showLogs`, or `quickActions`. `showLogs` requires `openrouterInsights.general.developerMode`.
 - `openrouterInsights.statusBar.template` (`string`, default `${deprecation}${modelName} ${priceText}${deprecation}`) — Use `${modelName}`, `${priceText}`, `${blendedRate}`, `${promptPrice}`, `${completionPrice}`, `${contextLength}`, and `${deprecation}`.
 
 ### Model browser

@@ -109,7 +109,7 @@ describe("FeatureRegistry", () => {
 		reg.dispose();
 	});
 
-	it("shouldRegisterCommand returns true for always-enabled commands", () => {
+	it("keeps primary commands available when features are disabled", () => {
 		setMockFeatures({
 			statusBar: false,
 			modelBrowser: false,
@@ -120,12 +120,42 @@ describe("FeatureRegistry", () => {
 
 		// Even when all features are off, these commands are always registered
 		expect(reg.shouldRegisterCommand("openrouter-insights.refreshPricing")).toBe(true);
-		expect(reg.shouldRegisterCommand("openrouter-insights.showLogs")).toBe(true);
 		expect(reg.shouldRegisterCommand("openrouter-insights.showQuickActions")).toBe(true);
-		expect(reg.shouldRegisterCommand("openrouter-insights.copyModelId")).toBe(true);
-		expect(reg.shouldRegisterCommand("openrouter-insights.openOnOpenRouter")).toBe(true);
+		expect(reg.shouldRegisterCommand("openrouter-insights.showLogs")).toBe(false);
+		expect(reg.shouldRegisterCommand("openrouter-insights.clearCache")).toBe(false);
+		reg.dispose();
+	});
+
+	it("gates developer commands behind developerMode", () => {
+		ConfigService.instance.dispose();
+		const reg = new FeatureRegistry();
+
+		expect(reg.shouldRegisterCommand("openrouter-insights.showLogs")).toBe(false);
+		expect(reg.shouldRegisterCommand("openrouter-insights.clearCache")).toBe(false);
+
+		(vscodeMock.workspace as any)._configValues = { "general.developerMode": true };
+		for (const listener of (vscodeMock.workspace as any)._createConfigListeners) {
+			listener({
+				affectsConfiguration: (key: string) =>
+					key === "openrouterInsights" || key === "openrouterInsights.general.developerMode",
+			});
+		}
+
+		expect(reg.shouldRegisterCommand("openrouter-insights.showLogs")).toBe(true);
 		expect(reg.shouldRegisterCommand("openrouter-insights.clearCache")).toBe(true);
-		expect(reg.shouldRegisterCommand("openrouter-insights.showCacheInfo")).toBe(true);
+		reg.dispose();
+	});
+
+	it("hides developer status-bar actions when developer mode is off", () => {
+		(vscodeMock.workspace as any)._configValues = { "statusBar.clickAction": "showLogs" };
+		ConfigService.instance.dispose();
+		expect(ConfigService.instance.statusBarClickAction).toBe("browseModels");
+	});
+
+	it("keeps quick actions available when developer mode is off", () => {
+		ConfigService.instance.dispose();
+		const reg = new FeatureRegistry();
+		expect(reg.shouldRegisterCommand("openrouter-insights.showQuickActions")).toBe(true);
 		reg.dispose();
 	});
 

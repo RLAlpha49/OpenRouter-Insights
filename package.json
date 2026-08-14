@@ -83,7 +83,8 @@
 				"command": "openrouter-insights.showLogs",
 				"title": "Show Logs",
 				"category": "OpenRouter Insights",
-				"icon": "$(output)"
+				"icon": "$(output)",
+				"enablement": "openrouter-insights:general.developerMode"
 			},
 			{
 				"command": "openrouter-insights.showQuickActions",
@@ -120,93 +121,31 @@
 				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
 			},
 			{
-				"command": "openrouter-insights.addToFavorites",
-				"title": "Add to Favorites",
-				"category": "OpenRouter Insights",
-				"icon": "$(star-add)",
-				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
-			},
-			{
-				"command": "openrouter-insights.copyModelId",
-				"title": "Copy Model ID",
-				"category": "OpenRouter Insights",
-				"icon": "$(copy)"
-			},
-			{
-				"command": "openrouter-insights.openOnOpenRouter",
-				"title": "Open on OpenRouter",
-				"category": "OpenRouter Insights",
-				"icon": "$(link-external)"
-			},
-			{
-				"command": "openrouter-insights.removeFromFavorites",
-				"title": "Remove from Favorites",
-				"category": "OpenRouter Insights",
-				"icon": "$(star-delete)",
-				"enablement": "openrouter-insights:feature.modelBrowser.enabled"
-			},
-			{
 				"command": "openrouter-insights.clearCache",
 				"title": "Clear Pricing Cache",
 				"category": "OpenRouter Insights",
-				"icon": "$(trash)"
+				"icon": "$(trash)",
+				"enablement": "openrouter-insights:general.developerMode"
 			},
 			{
 				"command": "openrouter-insights.showCacheInfo",
 				"title": "Show Cache Info",
 				"category": "OpenRouter Insights",
-				"icon": "$(info)"
+				"icon": "$(info)",
+				"enablement": "openrouter-insights:general.developerMode"
 			},
 			{
 				"command": "openrouter-insights.showRuntimeDiagnostics",
 				"title": "Show Runtime Diagnostics",
 				"category": "OpenRouter Insights",
-				"icon": "$(pulse)"
+				"icon": "$(pulse)",
+				"enablement": "openrouter-insights:general.developerMode"
 			},
 			{
 				"command": "openrouter-insights.viewModelDetail",
 				"title": "View Model Detail",
 				"category": "OpenRouter Insights",
 				"icon": "$(info)"
-			},
-			{
-				"command": "openrouter-insights.clearSelectedModel",
-				"title": "Clear Selected Model Override",
-				"category": "OpenRouter Insights",
-				"icon": "$(debug-stop)"
-			},
-			{
-				"command": "openrouter-insights.setApiKey",
-				"title": "Set Extension API Key (OpenRouter)",
-				"category": "OpenRouter Insights",
-				"icon": "$(key)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.removeApiKey",
-				"title": "Remove Extension API Key",
-				"category": "OpenRouter Insights",
-				"icon": "$(trash)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.refreshUsage",
-				"title": "Refresh Usage Data",
-				"category": "OpenRouter Insights",
-				"icon": "$(refresh)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.loadUsageDetails",
-				"title": "Load Usage Details",
-				"category": "OpenRouter Insights",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.selectUsageKey",
-				"title": "Select API Key for Usage View",
-				"category": "OpenRouter Insights",
-				"enablement": "openrouter-insights:feature.usage.enabled"
 			},
 			{
 				"command": "openrouter-insights.openUsageDashboard",
@@ -221,41 +160,6 @@
 				"category": "OpenRouter Insights",
 				"icon": "$(layout)",
 				"enablement": "openrouter-insights:feature.usage.enabled && openrouter-insights:usageDashboardEnabled"
-			},
-			{
-				"command": "openrouter-insights.createApiKey",
-				"title": "Create API Key",
-				"category": "OpenRouter Insights",
-				"icon": "$(add)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.renameApiKey",
-				"title": "Rename API Key",
-				"category": "OpenRouter Insights",
-				"icon": "$(edit)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.toggleApiKey",
-				"title": "Enable/Disable API Key",
-				"category": "OpenRouter Insights",
-				"icon": "$(debug-alt)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.setKeyLimit",
-				"title": "Set API Key Credit Limit",
-				"category": "OpenRouter Insights",
-				"icon": "$(lock)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
-			},
-			{
-				"command": "openrouter-insights.deleteApiKey",
-				"title": "Delete API Key",
-				"category": "OpenRouter Insights",
-				"icon": "$(trash)",
-				"enablement": "openrouter-insights:feature.usage.enabled"
 			}
 		],
 		"configuration": {
@@ -271,7 +175,7 @@
 					"default": 0,
 					"minimum": 0,
 					"maximum": 100,
-					"description": "Maximum characters for the model name in the status bar. Set to 0 to let the status bar expand dynamically (VS Code will add its own ellipsis on overflow)."
+					"markdownDescription": "**Advanced: Status Bar**\n\nMaximum characters for the model name in the status bar. Set to 0 to let the status bar expand dynamically (VS Code will add its own ellipsis on overflow)."
 				},
 				"openrouterInsights.statusBar.clickAction": {
 					"type": "string",
@@ -286,9 +190,9 @@
 						"Open the model browser on click",
 						"Refresh pricing data on click",
 						"Show extension logs on click",
-						"Show a quick-actions context menu on click"
+						"Show the Quick Actions menu on click"
 					],
-					"description": "What happens when the status bar item is clicked."
+					"markdownDescription": "**Advanced: Status Bar**\n\nWhat happens when the status bar item is clicked."
 				},
 				"openrouterInsights.modelBrowser.showFreeOnly": {
 					"type": "boolean",
@@ -320,17 +224,22 @@
 					"items": {
 						"type": "string"
 					},
-					"description": "List of OpenRouter model IDs to pin to the top of the model browser (e.g. [\"openai/gpt-4o\", \"anthropic/claude-sonnet\"])."
+					"markdownDescription": "**Advanced: Model Browser**\n\nList of OpenRouter model IDs to pin to the top of the model browser (e.g. [\"openai/gpt-4o\", \"anthropic/claude-sonnet\"])."
 				},
 				"openrouterInsights.modelBrowser.showDeprecated": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show deprecated/legacy models in the model browser. Disable to hide them."
+					"markdownDescription": "**Advanced: Model Browser**\n\nShow deprecated/legacy models in the model browser. Disable to hide them."
 				},
 				"openrouterInsights.general.selectedModelId": {
 					"type": "string",
 					"default": "",
 					"description": "Manually override the tracked model ID (e.g. \"openai/gpt-4o\"). Leave empty to auto-detect from Copilot's active model."
+				},
+				"openrouterInsights.general.developerMode": {
+					"type": "boolean",
+					"default": false,
+					"markdownDescription": "**Advanced: General**\n\nEnable developer/debug commands (Show Logs, Runtime Diagnostics, Clear Cache, Show Cache Info). Intended for debugging and extension development."
 				},
 				"openrouterInsights.general.blendWeights": {
 					"type": "object",
@@ -366,7 +275,7 @@
 							"description": "Cache-write percentage used when a model supports cache-write pricing."
 						}
 					},
-					"description": "Blend weights for blended pricing estimate. All four weights must total 100%."
+					"markdownDescription": "**Advanced: General**\n\nBlend weights for blended pricing estimate. All four weights must total 100%."
 				},
 				"openrouterInsights.general.providerScope": {
 					"type": "string",
@@ -379,7 +288,7 @@
 						"Only show pricing when an OpenRouter BYOK model is selected",
 						"Show pricing for any model provider (Copilot, OpenRouter, etc.)"
 					],
-					"description": "Which model providers to detect and show pricing for."
+					"markdownDescription": "**Advanced: General**\n\nWhich model providers to detect and show pricing for."
 				},
 				"openrouterInsights.general.logLevel": {
 					"type": "string",
@@ -396,13 +305,13 @@
 						"Log warnings and errors only",
 						"Log errors only"
 					],
-					"description": "Verbosity level for the OpenRouter Insights output channel."
+					"markdownDescription": "**Advanced: General**\n\nVerbosity level for the OpenRouter Insights output channel."
 				},
 				"openrouterInsights.general.apiBaseUrl": {
 					"type": "string",
 					"default": "https://openrouter.ai/api/v1/models",
 					"pattern": "^https?://.*",
-					"description": "Base URL for the OpenRouter models API. Change this to use a self-hosted proxy or custom enterprise endpoint."
+					"markdownDescription": "**Advanced: General**\n\nBase URL for the OpenRouter models API. Change this to use a self-hosted proxy or custom enterprise endpoint."
 				},
 				"openrouterInsights.general.autoRefreshInterval": {
 					"type": "number",
@@ -416,7 +325,7 @@
 					"default": 30,
 					"minimum": 0,
 					"maximum": 300,
-					"description": "How often (in seconds) to poll for model changes. Set to 0 to disable polling (rely on file watcher only). Default: 30."
+					"markdownDescription": "**Advanced: General**\n\nHow often (in seconds) to poll for model changes. Set to 0 to disable polling (rely on file watcher only). Default: 30."
 				},
 				"openrouterInsights.features.statusBar.enabled": {
 					"type": "boolean",
@@ -433,12 +342,12 @@
 					"default": true,
 					"description": "Enable the side-by-side model comparison webview."
 				},
-			"openrouterInsights.features.export.enabled": {
-				"type": "boolean",
-				"default": true,
-				"description": "Enable CSV and JSON export commands."
-			},
-			"openrouterInsights.features.hoverProvider.enabled": {
+				"openrouterInsights.features.export.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable CSV and JSON export commands."
+				},
+				"openrouterInsights.features.hoverProvider.enabled": {
 					"type": "boolean",
 					"default": true,
 					"description": "Show pricing tooltips when hovering over OpenRouter model IDs (e.g. 'openai/gpt-4o') in source files."
@@ -446,7 +355,7 @@
 				"openrouterInsights.statusBar.template": {
 					"type": "string",
 					"default": "${deprecation}${modelName} ${priceText}${deprecation}",
-					"description": "Template for the status bar text. Variables: ${modelName}, ${priceText} (compact blended rate), ${blendedRate}, ${promptPrice}, ${completionPrice}, ${contextLength}, ${deprecation} (warning icon when deprecated). Use ${promptPrice} and ${completionPrice} for detailed pricing."
+					"markdownDescription": "**Advanced: Status Bar**\n\nTemplate for the status bar text. Variables: ${modelName}, ${priceText} (compact blended rate), ${blendedRate}, ${promptPrice}, ${completionPrice}, ${contextLength}, ${deprecation} (warning icon when deprecated). Use ${promptPrice} and ${completionPrice} for detailed pricing."
 				},
 				"openrouterInsights.general.currency": {
 					"type": "string",
@@ -475,20 +384,20 @@
 						"Australian Dollar (A$)",
 						"Brazilian Real (R$)"
 					],
-					"description": "Currency for pricing display. Rates are static estimates. Set a custom rate via openrouterInsights.general.currencyRate for precision."
+					"markdownDescription": "**Advanced: General**\n\nCurrency for pricing display. Rates are static estimates. Set a custom rate via openrouterInsights.general.currencyRate for precision."
 				},
 				"openrouterInsights.general.currencyRate": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
-					"description": "Override the exchange rate for the selected currency (USD → target). Set to 0 to use the built-in static rate. Example: 0.92 for EUR."
+					"markdownDescription": "**Advanced: General**\n\nOverride the exchange rate for the selected currency (USD → target). Set to 0 to use the built-in static rate. Example: 0.92 for EUR."
 				},
 				"openrouterInsights.general.cacheTtlHours": {
 					"type": "number",
 					"default": 24,
 					"minimum": 1,
 					"maximum": 720,
-					"description": "Cache time-to-live in hours before pricing is considered stale (1–720). Default: 24."
+					"markdownDescription": "**Advanced: General**\n\nCache time-to-live in hours before pricing is considered stale (1–720). Default: 24."
 				},
 				"openrouterInsights.features.usage.enabled": {
 					"type": "boolean",
@@ -500,55 +409,53 @@
 					"default": 300,
 					"minimum": 0,
 					"maximum": 86400,
-					"description": "Auto-refresh interval for usage data in seconds (min 0, max 86400). Set to 0 to disable."
+					"markdownDescription": "**Advanced: Usage**\n\nAuto-refresh interval for usage data in seconds (min 0, max 86400). Set to 0 to disable."
 				},
 				"openrouterInsights.usage.backgroundPolling.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Allow background polling of authenticated account usage. Turn off to refresh usage only on demand."
+					"markdownDescription": "**Advanced: Usage**\n\nAllow background polling of authenticated account usage. Turn off to refresh usage only on demand."
 				},
 				"openrouterInsights.usage.analytics.enabled": {
 					"type": "boolean",
 					"default": true,
-					"description": "Include analytics enrichment in detailed usage refreshes. Turn off to reduce account-data collection."
+					"markdownDescription": "**Advanced: Usage**\n\nInclude analytics enrichment in detailed usage refreshes. Turn off to reduce account-data collection."
 				},
 				"openrouterInsights.usage.analytics.lookbackDays": {
 					"type": "number",
 					"default": 30,
 					"minimum": 1,
 					"maximum": 90,
-					"description": "Number of days included in opt-in analytics enrichment (1–90)."
+					"markdownDescription": "**Advanced: Usage**\n\nNumber of days included in opt-in analytics enrichment (1–90)."
 				},
 				"openrouterInsights.usage.lowBalanceThreshold": {
 					"type": "number",
 					"default": 10,
 					"minimum": 0,
-					"description": "Dollar threshold below which the status bar shows a warning (set to 0 to disable warnings)."
+					"markdownDescription": "**Advanced: Usage**\n\nDollar threshold below which the status bar shows a warning (set to 0 to disable warnings)."
 				},
 				"openrouterInsights.usage.showStatusBar": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show account balance in the VS Code status bar."
+					"markdownDescription": "**Advanced: Usage**\n\nShow account balance in the VS Code status bar."
 				},
 				"openrouterInsights.usage.statusBarClickAction": {
 					"type": "string",
 					"default": "fullDashboard",
 					"enum": [
 						"fullDashboard",
-						"sidebarDashboard",
-						"quickActions"
+						"sidebarDashboard"
 					],
 					"enumDescriptions": [
 						"Open the full usage dashboard in an editor tab on click",
-						"Open the usage dashboard in the sidebar on click",
-						"Show a quick-actions context menu on click"
+						"Open the usage dashboard in the sidebar on click"
 					],
-					"description": "What happens when the usage status bar item is clicked."
+					"markdownDescription": "**Advanced: Usage**\n\nWhat happens when the usage status bar item is clicked."
 				},
 				"openrouterInsights.usage.showDashboard": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show the usage dashboard sidebar panel."
+					"markdownDescription": "**Advanced: Usage**\n\nShow the usage dashboard sidebar panel."
 				}
 			}
 		}

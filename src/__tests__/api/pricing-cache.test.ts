@@ -26,6 +26,7 @@ function createFakeContext(initialData?: CachedPricingData) {
 			hoverProvider: true,
 			usage: true,
 		},
+		developerMode: false,
 		globalState: {
 			get: (key: string) => store.get(key),
 			update: async (key: string, value: unknown) => {
@@ -45,6 +46,7 @@ function createFakeConfig(overrides?: Partial<ReadonlyConfig>): ReadonlyConfig {
 			hoverProvider: true,
 			usage: true,
 		},
+		developerMode: false,
 		cacheTtlHours: 24,
 		autoRefreshInterval: 3600,
 		showInStatusBar: true,

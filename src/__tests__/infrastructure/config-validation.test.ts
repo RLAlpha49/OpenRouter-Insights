@@ -39,7 +39,7 @@ function isValidStatusBarClickAction(v: string): boolean {
 }
 
 function isValidUsageStatusBarClickAction(v: string): boolean {
-	return ["fullDashboard", "sidebarDashboard", "quickActions"].includes(v);
+	return ["fullDashboard", "sidebarDashboard"].includes(v);
 }
 
 describe("ConfigService: type guards", () => {
@@ -89,7 +89,6 @@ describe("ConfigService: type guards", () => {
 	it("accepts valid usage status bar click actions", () => {
 		expect(isValidUsageStatusBarClickAction("fullDashboard")).toBe(true);
 		expect(isValidUsageStatusBarClickAction("sidebarDashboard")).toBe(true);
-		expect(isValidUsageStatusBarClickAction("quickActions")).toBe(true);
 	});
 
 	it("rejects invalid usage status bar click actions", () => {

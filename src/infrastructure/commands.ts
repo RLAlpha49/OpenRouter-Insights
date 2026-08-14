@@ -1,16 +1,13 @@
 /**
  * Command pattern — each VS Code command is a self-contained class
  * implementing ICommand. The CommandRegistry auto-discovers commands
- * from package.json, wires handlers, and provides the quick-actions
- * menu dynamically (no more hardcoded list duplicating package.json).
+ * from package.json and wires handlers without duplicating command logic.
  *
  * Adding a new command is now a three-step process:
  *   1. Add the command definition to package.json
  *   2. Create a class implementing ICommand
  *   3. Register it in the CommandRegistry
  *
- * QuickActions is built automatically from registered commands that
- * have quickAction metadata.
  */
 
 import * as vscode from "vscode";
@@ -21,7 +18,7 @@ import type { EventBus } from "../infrastructure/eventBus";
 import { exportPricing } from "../ui/exportService";
 import { showModelDetailWebview } from "../ui/webviews/modelDetailView";
 import { show, log, formatError } from "../infrastructure/logger";
-import { ConfigService, getShowFreeModelsOnly, setSelectedModelId } from "../infrastructure/config";
+import { ConfigService, getShowFreeModelsOnly } from "../infrastructure/config";
 import type { ModelPricingInfo } from "../types";
 import type { RuntimeDiagnostics } from "./runtimeDiagnostics";
 
@@ -32,7 +29,7 @@ export interface ICommand {
 	readonly id: string;
 	/** Execute the command with the adapter-normalized arguments */
 	execute(..._args: unknown[]): Promise<void>;
-	/** Optional: show in QuickActions menu */
+	/** Optional metadata for command shortcut consumers. */
 	readonly quickAction?: {
 		label: string;
 		description: string;
@@ -206,6 +203,61 @@ export class ShowLogsCommand implements ICommand {
 	async execute(): Promise<void> {
 		show();
 	}
+}
+
+export class ShowQuickActionsCommand implements ICommand {
+	readonly id = "openrouter-insights.showQuickActions";
+	readonly argAdapter = adaptNoArgs;
+	constructor(
+		private readonly _commands: ReadonlyMap<string, ICommand>,
+		private readonly _isEnabled: (_commandId: string) => boolean = () => true,
+	) {}
+	async execute(): Promise<void> {
+		const quickItems = buildQuickActionItems(this._commands, this._isEnabled);
+		const pick = await vscode.window.showQuickPick(quickItems, {
+			placeHolder: "OpenRouter Insights — Quick Actions",
+		});
+		if (!pick) return;
+		log.info("quickActions: selected", pick.action);
+		const command = this._commands.get(pick.action);
+		if (command) await command.execute();
+	}
+}
+
+export function buildQuickActionItems(
+	commands: ReadonlyMap<string, ICommand>,
+	isEnabled: (_commandId: string) => boolean = () => true,
+): { label: string; description: string; action: string }[] {
+	return [...commands.values()]
+		.filter((command) => command.quickAction && isEnabled(command.id))
+		.map((command) => ({
+			label: command.quickAction!.label,
+			description: command.quickAction!.description,
+			action: command.id,
+		}))
+		.sort(
+			(a, b) =>
+				quickActionRank(a.action) - quickActionRank(b.action) || a.label.localeCompare(b.label),
+		);
+}
+
+function quickActionRank(commandId: string): number {
+	const ranks: Record<string, number> = {
+		"openrouter-insights.refreshPricing": 10,
+		"openrouter-insights.browseModels": 20,
+		"openrouter-insights.setModelOverride": 21,
+		"openrouter-insights.compareModels": 30,
+		"openrouter-insights.viewModelDetail": 31,
+		"openrouter-insights.exportCsv": 50,
+		"openrouter-insights.exportJson": 51,
+		"openrouter-insights.openUsageDashboard": 62,
+		"openrouter-insights.openExpandedDashboard": 63,
+		"openrouter-insights.showLogs": 90,
+		"openrouter-insights.clearCache": 91,
+		"openrouter-insights.showCacheInfo": 92,
+		"openrouter-insights.showRuntimeDiagnostics": 93,
+	};
+	return ranks[commandId] ?? 100;
 }
 
 export class ToggleStatusBarCommand implements ICommand {
@@ -406,97 +458,6 @@ export class ViewModelDetailCommand implements ICommand {
 			}
 		}
 	}
-}
-
-export class ClearSelectedModelCommand implements ICommand {
-	readonly id = "openrouter-insights.clearSelectedModel";
-	readonly argAdapter = adaptNoArgs;
-	readonly quickAction = {
-		label: "$(debug-stop) Clear Model Override",
-		description: "Return model pricing to automatic detection",
-	};
-	async execute(): Promise<void> {
-		await setSelectedModelId("");
-		void vscode.window.showInformationMessage(
-			"Model override cleared. Automatic model detection restored.",
-		);
-	}
-}
-
-// ── Quick Actions (dynamically built from registry) ────────────
-
-export class ShowQuickActionsCommand implements ICommand {
-	readonly id = "openrouter-insights.showQuickActions";
-	readonly argAdapter = adaptNoArgs;
-	constructor(
-		private readonly _commands: ReadonlyMap<string, ICommand>,
-		private readonly _isEnabled: (_commandId: string) => boolean = () => true,
-	) {}
-	async execute(): Promise<void> {
-		const quickItems = buildQuickActionItems(this._commands, this._isEnabled);
-
-		const pick = await vscode.window.showQuickPick(quickItems, {
-			placeHolder: "OpenRouter Insights — Quick Actions",
-		});
-
-		if (!pick) return;
-		log.info("quickActions: selected", pick.action);
-		const cmd = this._commands.get(pick.action);
-		if (cmd) await cmd.execute();
-	}
-}
-
-export function buildQuickActionItems(
-	commands: ReadonlyMap<string, ICommand>,
-	isEnabled: (_commandId: string) => boolean = () => true,
-): { label: string; description: string; action: string }[] {
-	const quickItems: { label: string; description: string; action: string }[] = [];
-	for (const cmd of commands.values()) {
-		if (cmd.quickAction && isEnabled(cmd.id)) {
-			quickItems.push({
-				label: cmd.quickAction.label,
-				description: cmd.quickAction.description,
-				action: cmd.id,
-			});
-		}
-	}
-
-	quickItems.sort((a, b) => {
-		const rankA = quickActionRank(a.action);
-		const rankB = quickActionRank(b.action);
-		return rankA - rankB || a.label.localeCompare(b.label);
-	});
-	return quickItems;
-}
-
-/** Keep related actions together without coupling ordering to registration order. */
-function quickActionRank(commandId: string): number {
-	const ranks: Record<string, number> = {
-		"openrouter-insights.refreshPricing": 10,
-		"openrouter-insights.browseModels": 20,
-		"openrouter-insights.setModelOverride": 21,
-		"openrouter-insights.clearSelectedModel": 22,
-		"openrouter-insights.compareModels": 30,
-		"openrouter-insights.viewModelDetail": 31,
-		"openrouter-insights.addToFavorites": 40,
-		"openrouter-insights.removeFromFavorites": 41,
-		"openrouter-insights.exportCsv": 50,
-		"openrouter-insights.exportJson": 51,
-		"openrouter-insights.setApiKey": 60,
-		"openrouter-insights.refreshUsage": 61,
-		"openrouter-insights.openUsageDashboard": 62,
-		"openrouter-insights.openExpandedDashboard": 63,
-		"openrouter-insights.createApiKey": 64,
-		"openrouter-insights.renameApiKey": 65,
-		"openrouter-insights.toggleApiKey": 66,
-		"openrouter-insights.setKeyLimit": 67,
-		"openrouter-insights.deleteApiKey": 68,
-		"openrouter-insights.showLogs": 90,
-		"openrouter-insights.clearCache": 91,
-		"openrouter-insights.showCacheInfo": 92,
-		"openrouter-insights.showRuntimeDiagnostics": 93,
-	};
-	return ranks[commandId] ?? 100;
 }
 
 // ── Helper ─────────────────────────────────────────────────────

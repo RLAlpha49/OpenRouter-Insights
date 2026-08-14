@@ -22,6 +22,7 @@ export function createFakeReadonlyConfig(overrides?: Partial<ReadonlyConfig>): R
 			usage: true,
 		},
 		cacheTtlHours: 24,
+		developerMode: false,
 		autoRefreshInterval: 3600,
 		showInStatusBar: true,
 		statusBarMaxWidth: 0,

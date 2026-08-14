@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import {
-	ShowQuickActionsCommand,
 	ToggleStatusBarCommand,
 	AddToFavoritesCommand,
 	RemoveFromFavoritesCommand,
@@ -75,13 +74,10 @@ describe("remaining high-value command branches", () => {
 		expect((vscode.window as any).showQuickPick).toHaveBeenCalled();
 	});
 
-	it("executes a selected quick action and toggles status bar settings", async () => {
-		const command = { id: "child", execute: vi.fn(async () => {}) } as any;
-		(vscode.window as any).showQuickPick = vi.fn(async () => ({ action: "child" }));
-		await new ShowQuickActionsCommand(new Map([["child", command]])).execute();
+	it("toggles status bar settings", async () => {
 		const status = { setEnabled: vi.fn() } as any;
 		await new ToggleStatusBarCommand(status).execute();
-		expect(command.execute).toHaveBeenCalledOnce();
+		expect(status.setEnabled).not.toHaveBeenCalled();
 	});
 });
 
