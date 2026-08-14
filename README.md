@@ -40,11 +40,11 @@ Pricing works without an API key. Usage features require an OpenRouter API key.
 ### Account usage
 
 - **Usage status bar** — Show your account balance with a configurable low-balance warning.
-- **Usage dashboard** — Open an activity-bar webview with balance, daily/weekly/monthly/all-time summaries, budget limits, per-key usage, and activity details.
+- **Usage dashboard** — Open an activity-bar webview with balance, daily/weekly/monthly/all-time summaries, budget limits, per-key usage, and activity details. With a management key and analytics enabled, it also shows a per-model spend breakdown (requests, tokens, and overall cache-hit rate).
 - **Expanded dashboard** — Open the usage dashboard in a full editor tab.
 - **Secure key storage** — Store the extension API key through VS Code `SecretStorage`.
 - **Background refresh** — Poll account usage automatically or disable background polling for on-demand refresh only.
-- **Analytics data** — Include optional analytics data in detailed usage refreshes. Configure the lookback period.
+- **Analytics data** — Include optional analytics data in detailed usage refreshes. Configure the lookback period. Analytics powers the per-model spend breakdown and cache-hit-rate insight in the usage dashboard, and requires a management key.
 - **Managed API keys** — With a management key, create, rename, enable or disable, limit, and delete managed OpenRouter keys.
 
 ## Prerequisites
