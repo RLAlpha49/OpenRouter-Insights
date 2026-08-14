@@ -146,9 +146,27 @@ describe("StatusBarUpdateUseCase", () => {
 		expect(shown).toHaveLength(1);
 
 		// Same model, updated price — should re-render despite unchanged model ID.
-		const updated = makeModel({ blendedRate: 7.25, perMillion: { prompt: 5, completion: 20, image: 0, request: 0, inputCacheRead: 2, inputCacheWrite: 0, webSearch: 0, internalReasoning: 0 } });
+		const updated = makeModel({
+			blendedRate: 7.25,
+			perMillion: {
+				prompt: 5,
+				completion: 20,
+				image: 0,
+				request: 0,
+				inputCacheRead: 2,
+				inputCacheWrite: 0,
+				webSearch: 0,
+				internalReasoning: 0,
+			},
+		});
 		const updatedCache = createFakeCache([updated]);
-		const updatedUseCase = new StatusBarUpdateUseCase(updatedCache, statusBar, modelPicker, config, eventBus);
+		const updatedUseCase = new StatusBarUpdateUseCase(
+			updatedCache,
+			statusBar,
+			modelPicker,
+			config,
+			eventBus,
+		);
 
 		await updatedUseCase.execute();
 		expect(shown).toHaveLength(2);
