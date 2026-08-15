@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.2.0](https://github.com/RLAlpha49/OpenRouter-Insights/compare/v1.1.0...v1.2.0) (2026-08-15)
+
+### ✨ Features
+
+* **features:** gate commands and views by feature state ([6ea0ef1](https://github.com/RLAlpha49/OpenRouter-Insights/commit/6ea0ef15530ff24c5b78bcd7e4f6f13ccd28bb09))
+* **ui:** add catalog and favorites browsing ([c28629a](https://github.com/RLAlpha49/OpenRouter-Insights/commit/c28629a556069c620870e8b382046485d7e04507))
+* **ui:** enhance model detail actions and pricing ([6e533e4](https://github.com/RLAlpha49/OpenRouter-Insights/commit/6e533e443e4e2e5da634be3a261b71a849d7cde7))
+* **ui:** streamline command and model actions ([4db6ae4](https://github.com/RLAlpha49/OpenRouter-Insights/commit/4db6ae4b73084e2378443c19d615e46c7537c2dd))
+
+### 🐛 Bug Fixes
+
+* **api:** enforce endpoint contracts in transport ([99aac7b](https://github.com/RLAlpha49/OpenRouter-Insights/commit/99aac7b2bb9651a7262129884faa61e06c5fbc2c))
+* **api:** preserve zero-priced cache components ([4934b75](https://github.com/RLAlpha49/OpenRouter-Insights/commit/4934b758e97d76c0984d457b7cf0c0108151a14d))
+* **api:** refresh pricing on startup even with fresh cache ([22a777d](https://github.com/RLAlpha49/OpenRouter-Insights/commit/22a777d097044b7888beded45185b3192efbf21c))
+* **commands:** handle synchronous argument adapter failures ([94c3460](https://github.com/RLAlpha49/OpenRouter-Insights/commit/94c34600ab8d6d4fe410fffbda492f5724d16e62))
+* **commands:** recover synchronous execution failures ([109c368](https://github.com/RLAlpha49/OpenRouter-Insights/commit/109c3688687988ad6214bda5d5dd642bfcebaacc))
+* **formatting:** format timestamps in local time zone ([088682a](https://github.com/RLAlpha49/OpenRouter-Insights/commit/088682a18dec19d5f0b446ab6bedf72317a0c28d))
+* **notifications:** auto-dismiss information messages ([7b43226](https://github.com/RLAlpha49/OpenRouter-Insights/commit/7b43226dd57f399f4b1a28c7940132ab72a28e30))
+* **privacy:** redact sensitive state database logs ([45abdb0](https://github.com/RLAlpha49/OpenRouter-Insights/commit/45abdb09cf8a6c3caa032f45e95ae841dbcbd286))
+* **release:** align changelog dependency compatibility ([8caf69a](https://github.com/RLAlpha49/OpenRouter-Insights/commit/8caf69ae55e9fc08ef3c6ea1b9b3ff89f49fb827))
+* **runtime:** harden refresh cancellation and diagnostics ([da2ae5e](https://github.com/RLAlpha49/OpenRouter-Insights/commit/da2ae5ebe3efe6d1874f9f39b680d53af138b4df))
+* **state-db:** stabilize WAL snapshot reads ([0da2fc4](https://github.com/RLAlpha49/OpenRouter-Insights/commit/0da2fc45a8b31a61ae6bfc81af5c3008173a46a9))
+* **status-bar:** preserve rendered content after refresh ([272eff5](https://github.com/RLAlpha49/OpenRouter-Insights/commit/272eff54cf95897d77d6257bf1de696d466a1762))
+* **status-bar:** refresh status bar when pricing changes ([410b971](https://github.com/RLAlpha49/OpenRouter-Insights/commit/410b9713eacfa698fa5ea1b5b017d08ef489f198))
+* **ui:** improve webview accessibility and theme compatibility ([57fdb57](https://github.com/RLAlpha49/OpenRouter-Insights/commit/57fdb57d43b0390b56828e55bc6e15ec70d438cf))
+
+### ⚡ Performance
+
+* **api:** bound pricing page cache ([8f98979](https://github.com/RLAlpha49/OpenRouter-Insights/commit/8f98979d021156945ec34c8d7f98a8eb83d8b61a))
+
+### ♻️ Refactoring
+
+* **config:** consolidate favorites under model browser ([1b658da](https://github.com/RLAlpha49/OpenRouter-Insights/commit/1b658da92a4243853c40b824b1e3dbe16cc479b8))
+
+### 📚 Documentation
+
+* clarify telemetry and authenticated requests ([1a9418a](https://github.com/RLAlpha49/OpenRouter-Insights/commit/1a9418adf5008e88d340f83119dd47d8f86173fc))
+* **diagnostics:** document runtime diagnostics command ([d35daf6](https://github.com/RLAlpha49/OpenRouter-Insights/commit/d35daf6189699f4550bac4bd8ec761dbd7f06309))
+* document usage dashboard analytics ([a237ff0](https://github.com/RLAlpha49/OpenRouter-Insights/commit/a237ff0bfbd0b824aac6348be58660e30713b524))
+* **release:** document 1.1.0 release changes ([ee8ca4a](https://github.com/RLAlpha49/OpenRouter-Insights/commit/ee8ca4a7584497d35874413f926fc73a4c0298c1))
+
+### 💎 Style
+
+* **status-bar:** format price change test ([211ddb2](https://github.com/RLAlpha49/OpenRouter-Insights/commit/211ddb25a33b01a569f3827cf5837dd33f68e11c))
+* **ui:** remove ambient webview glow ([ed2813e](https://github.com/RLAlpha49/OpenRouter-Insights/commit/ed2813ed5349f4537f5f4ec6189daa3c4bfc8ead))
+
+### 📦 Build
+
+* **vscode:** add format task ([d5765c5](https://github.com/RLAlpha49/OpenRouter-Insights/commit/d5765c5c94a79b7afae44c44788b28dad368f7ee))
+
+### 🧪 Tests
+
+* **sqlite-reader:** extend WAL and scan diagnostics coverage ([15ac0b9](https://github.com/RLAlpha49/OpenRouter-Insights/commit/15ac0b989e23f915be4e4257d6884707ab9366b5))
+* **status-bar:** import vitest helpers ([6459116](https://github.com/RLAlpha49/OpenRouter-Insights/commit/6459116b449a0dffeaf7724c2e6bf333f0d2421d))
+
 ## [1.1.0](https://github.com/RLAlpha49/OpenRouter-Insights/compare/v1.0.0...v1.1.0) (2026-08-11)
 
 ### ✨ Features
