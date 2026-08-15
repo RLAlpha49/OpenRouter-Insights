@@ -45,15 +45,20 @@ afterEach(() => {
 });
 
 /** Build a state.vscdb-style database with an ItemTable. */
-function createStateDb(dbPath: string, rows: Array<[string, string]>): DatabaseSync {
-	if (fs.existsSync(dbPath)) fs.rmSync(dbPath, { force: true });
-	const db = new DatabaseSync(dbPath);
-	db.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
-	for (const [k, v] of rows) {
-		db.prepare("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run(k, v);
+	function createStateDb(dbPath: string, rows: Array<[string, string]>): DatabaseSync {
+		if (fs.existsSync(dbPath)) fs.rmSync(dbPath, { force: true });
+		const db = new DatabaseSync(dbPath);
+		db.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
+		// Bulk inserts inside one transaction: a single autocommit INSERT per
+		// row forces a synchronous fsync each time, which is slow enough on
+		// CI's disk to blow past the test timeout for large fixtures.
+		db.exec("BEGIN");
+		for (const [k, v] of rows) {
+			db.prepare("INSERT INTO ItemTable (key, value) VALUES (?, ?)").run(k, v);
+		}
+		db.exec("COMMIT");
+		return db;
 	}
-	return db;
-}
 
 describe("readItemTableValueDetailed", () => {
 	it("reads a value from a main-file-only database", () => {
