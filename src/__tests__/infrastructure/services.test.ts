@@ -8,6 +8,9 @@ import { createServices } from "../../infrastructure/services";
 import * as analyticsService from "../../api/clients/analyticsService";
 import { RefreshCoordinator } from "../../infrastructure/refreshCoordinator";
 import { RuntimeDiagnostics } from "../../infrastructure/runtimeDiagnostics";
+import { RefreshUseCase } from "../../use-cases/refreshUseCase";
+import { StatusBarUpdateUseCase } from "../../use-cases/statusBarUpdateUseCase";
+import { UsageRefreshUseCase } from "../../use-cases/usageRefreshUseCase";
 import { Logger, formatError, formatErrorBrief, initLogger } from "../../infrastructure/logger";
 import { observeConfiguration } from "../../infrastructure/configurationObserver";
 import { createStateDbWatcher } from "../../infrastructure/stateDbWatcher";
@@ -193,6 +196,53 @@ describe("service composition", () => {
 		services.dispose();
 		services.dispose();
 		expect(services.statusBar.dispose).toBeDefined();
+	});
+
+	it("executes the pricing and usage refresh orchestration", async () => {
+		const acquireSpy = vi
+			.spyOn(RefreshCoordinator.prototype, "acquire")
+			.mockImplementation(async (_label, _reason, fn) => {
+				const ctx = {
+					isCancelled: () => false,
+					isFailed: () => false,
+					refreshId: 1,
+					signal: { aborted: false },
+					abort: vi.fn(),
+				} as any;
+				await fn(ctx);
+				return undefined;
+			});
+		vi.spyOn(RefreshUseCase.prototype, "execute").mockResolvedValue(undefined as any);
+		vi.spyOn(StatusBarUpdateUseCase.prototype, "execute").mockResolvedValue(undefined as any);
+		vi.spyOn(UsageRefreshUseCase.prototype, "execute").mockResolvedValue(undefined as any);
+
+		const context = {
+			globalState: { get: vi.fn(), update: vi.fn(async () => {}) },
+			secrets: { store: vi.fn(), get: vi.fn(async () => undefined), delete: vi.fn() },
+			subscriptions: [],
+			extensionPath: "C:/extension",
+		} as any;
+
+		try {
+			const services = createServices(context);
+			await services.doRefresh();
+			await services.doUsageRefresh("user", "detailed");
+			await services.doUsageRefresh("schedule", "summary");
+			expect(acquireSpy).toHaveBeenCalledTimes(3);
+
+			vi.spyOn(vscode.commands, "executeCommand").mockResolvedValue(undefined);
+			const openDashboard = services.commands.get("openrouter-insights.openUsageDashboard");
+			await openDashboard?.execute();
+
+			vi.spyOn(vscode.window, "showInputBox").mockResolvedValue("sk-or-v1-" + "e".repeat(32));
+			const setKey = services.commands.get("openrouter-insights.setApiKey");
+			await setKey?.execute();
+
+			services.dispose();
+			services.dispose();
+		} finally {
+			vi.restoreAllMocks();
+		}
 	});
 
 	it("shares the runtime diagnostics instance with refresh coordination", () => {
