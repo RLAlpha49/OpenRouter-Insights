@@ -157,6 +157,7 @@ All settings use the `openrouterInsights` prefix.
 
 - `openrouterInsights.general.selectedModelId` (`string`, default empty) — Override automatic model detection.
 - `openrouterInsights.general.providerScope` (`string`, default `openrouterOnly`) — Choose `openrouterOnly` or `allProviders`.
+- `openrouterInsights.general.providerSort` (`string`, default `default`) — Choose `default`, `price`, `throughput`, or `latency`. Mimics OpenRouter's provider routing preference and shows the exact pricing of the provider OpenRouter would route to for the selected/status-bar model and favorites. `throughput` and `latency` fall back to default pricing while OpenRouter reports no metrics.
 - `openrouterInsights.general.logLevel` (`string`, default `info`) — Choose `debug`, `info`, `warn`, or `error`.
 - `openrouterInsights.general.apiBaseUrl` (`string`, default `https://openrouter.ai/api/v1/models`) — Set the base URL for the public models request. Authenticated usage requests use the fixed OpenRouter origin.
 - `openrouterInsights.general.autoRefreshInterval` (`number`, default `3600`) — Set the pricing refresh interval in seconds. The supported range is 300–86400. `0` disables scheduled refresh.

@@ -32,6 +32,7 @@ export interface ReadonlyConfig {
 	readonly selectedModelId: string;
 	readonly blendWeights: BlendWeights;
 	readonly providerFilter: ProviderFilter;
+	readonly providerSort: ProviderSort;
 	readonly modelPollInterval: number;
 	readonly statusBarClickAction: StatusBarClickAction;
 	readonly showFreeModelsOnly: boolean;
@@ -56,6 +57,9 @@ export interface ReadonlyConfig {
 }
 
 export type ProviderFilter = "openrouterOnly" | "allProviders";
+
+/** Re-exported provider sort strategies (mirrors OpenRouter provider routing). */
+export type ProviderSort = import("../api/clients/providerSort").ProviderSortOption;
 
 export type StatusBarClickAction = "browseModels" | "refreshPricing" | "showLogs" | "quickActions";
 
@@ -115,6 +119,10 @@ function percentage(value: number): number {
 
 export function getProviderFilter(): ProviderFilter {
 	return ConfigService.instance.providerFilter;
+}
+
+export function getProviderSort(): ProviderSort {
+	return ConfigService.instance.providerSort;
 }
 
 export function getModelPollInterval(): number {
@@ -416,6 +424,16 @@ export class ConfigService implements vscode.Disposable, ReadonlyConfig {
 					`ConfigService: invalid general.providerScope "${v}", falling back to "openrouterOnly"`,
 				);
 				return "openrouterOnly";
+			}
+			return v;
+		});
+	}
+
+	get providerSort(): ProviderSort {
+		return this._get<ProviderSort>("general.providerSort", "default", (v) => {
+			if (v !== "default" && v !== "price" && v !== "throughput" && v !== "latency") {
+				_log.warn(`ConfigService: invalid general.providerSort "${v}", falling back to "default"`);
+				return "default";
 			}
 			return v;
 		});

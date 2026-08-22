@@ -42,6 +42,10 @@ function isValidUsageStatusBarClickAction(v: string): boolean {
 	return ["fullDashboard", "sidebarDashboard"].includes(v);
 }
 
+function isValidProviderSort(v: string): boolean {
+	return ["default", "price", "throughput", "latency"].includes(v);
+}
+
 describe("ConfigService: type guards", () => {
 	it("accepts valid provider filters", () => {
 		expect(isValidProviderFilter("openrouterOnly")).toBe(true);
@@ -93,6 +97,18 @@ describe("ConfigService: type guards", () => {
 
 	it("rejects invalid usage status bar click actions", () => {
 		expect(isValidUsageStatusBarClickAction("none")).toBe(false);
+	});
+
+	it("accepts valid provider sorts", () => {
+		expect(isValidProviderSort("default")).toBe(true);
+		expect(isValidProviderSort("price")).toBe(true);
+		expect(isValidProviderSort("throughput")).toBe(true);
+		expect(isValidProviderSort("latency")).toBe(true);
+	});
+
+	it("rejects invalid provider sorts", () => {
+		expect(isValidProviderSort("exacto")).toBe(false);
+		expect(isValidProviderSort("")).toBe(false);
 	});
 });
 
@@ -229,5 +245,9 @@ describe("createFakeReadonlyConfig", () => {
 		expect(cfg.showInStatusBar).toBe(false);
 		expect(cfg.providerFilter).toBe("allProviders");
 		expect(cfg.autoRefreshInterval).toBe(3600);
+	});
+
+	it("defaults providerSort to default", () => {
+		expect(createFakeReadonlyConfig().providerSort).toBe("default");
 	});
 });

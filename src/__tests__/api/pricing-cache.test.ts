@@ -53,6 +53,7 @@ function createFakeConfig(overrides?: Partial<ReadonlyConfig>): ReadonlyConfig {
 		statusBarMaxWidth: 0,
 		selectedModelId: "",
 		providerFilter: "openrouterOnly",
+		providerSort: "default",
 		modelPollInterval: 30,
 		statusBarClickAction: "browseModels",
 		showFreeModelsOnly: false,

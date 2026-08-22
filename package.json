@@ -290,6 +290,23 @@
 					],
 					"markdownDescription": "**Advanced: General**\n\nWhich model providers to detect and show pricing for."
 				},
+				"openrouterInsights.general.providerSort": {
+					"type": "string",
+					"default": "default",
+					"enum": [
+						"default",
+						"price",
+						"throughput",
+						"latency"
+					],
+					"enumDescriptions": [
+						"Default (balanced) — keep OpenRouter's balanced load-balanced pricing",
+						"Price (cheapest first)",
+						"Throughput (highest first)",
+						"Latency (lowest first)"
+					],
+					"markdownDescription": "**Advanced: General**\n\nMimics OpenRouter's provider routing preference: shows the exact pricing of the provider OpenRouter would route to for the selected/status-bar model and favorites. Throughput and Latency fall back to default pricing while OpenRouter reports no metrics."
+				},
 				"openrouterInsights.general.logLevel": {
 					"type": "string",
 					"default": "info",
