@@ -227,7 +227,7 @@ describe("service composition", () => {
 			const services = createServices(context);
 			await services.doRefresh();
 			await services.doUsageRefresh("user", "detailed");
-			await services.doUsageRefresh("schedule", "summary");
+			await services.doUsageRefresh("scheduled", "baseline");
 			expect(acquireSpy).toHaveBeenCalledTimes(3);
 
 			vi.spyOn(vscode.commands, "executeCommand").mockResolvedValue(undefined);
