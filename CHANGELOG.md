@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.0](https://github.com/RLAlpha49/OpenRouter-Insights/compare/v1.2.0...v1.3.0) (2026-08-22)
+
+### ✨ Features
+
+* **api:** add model endpoints contract and provider sort selection ([870ac87](https://github.com/RLAlpha49/OpenRouter-Insights/commit/870ac8778af6f8d71aee4495ed96ea527fa0b2a4))
+* **config:** add general.providerSort setting ([4904f77](https://github.com/RLAlpha49/OpenRouter-Insights/commit/4904f77e7ae09fbd37961f5a385e89e0397392e2))
+* **pricing:** show routed-provider pricing for tracked models ([542d293](https://github.com/RLAlpha49/OpenRouter-Insights/commit/542d29363c765dc9259661c4756a0c2d886d867d))
+
+### 🐛 Bug Fixes
+
+* **api:** match free variants before generic routers ([4a54982](https://github.com/RLAlpha49/OpenRouter-Insights/commit/4a549826fbd90d8695f1d44b42184a5b839d2136))
+
+### ⚡ Performance
+
+* **test:** bulk insert SQLite fixtures in transactions [skip ci] ([6a3bea9](https://github.com/RLAlpha49/OpenRouter-Insights/commit/6a3bea9689e6051d3a44cf4d9dcc953e415d683b))
+
+### 🧪 Tests
+
+* **infrastructure:** verify scheduled baseline usage refresh ([f5b6158](https://github.com/RLAlpha49/OpenRouter-Insights/commit/f5b6158cb28e066b5bb093d532419ecc90c39e70))
+* **software:** verify service orchestration flows [skip ci] ([ee1d597](https://github.com/RLAlpha49/OpenRouter-Insights/commit/ee1d597d21efb48bad3a9631621d610c7eba8384))
+
 ## [1.2.0](https://github.com/RLAlpha49/OpenRouter-Insights/compare/v1.1.0...v1.2.0) (2026-08-15)
 
 ### ✨ Features
