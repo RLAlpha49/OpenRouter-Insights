@@ -152,6 +152,62 @@ describe("findBestMatch", () => {
 		const result = findBestMatch(models, "openai: gpt-4o", idx);
 		expect(result?.id).toBe("openai/gpt-4o");
 	});
+
+	it("does not match the free models router from a name that merely contains 'free'", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		const glmFree = { ...makeModel("z-ai/glm-5.2:free", "Z.ai: GLM 5.2 (free)", 0), isFree: true };
+		// Catalog order matters: the router appears after the GLM variant here,
+		// so a tie at score 1 previously resolved to whichever came first.
+		const catalog = [glmFree, router];
+
+		expect(findBestMatch(catalog, "Glm 5.2 Free")?.id).toBe("z-ai/glm-5.2:free");
+	});
+
+	it("still matches the free models router by its exact name", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		expect(findBestMatch([router], "Free Models Router")?.id).toBe("openrouter/free");
+	});
+
+	it("prefers the specific free variant over the router for a dated free id fragment", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		const glmFree = { ...makeModel("z-ai/glm-5.2:free", "Z.ai: GLM 5.2 (free)", 0), isFree: true };
+		const catalog = [glmFree, router];
+
+		expect(findBestMatch(catalog, "glm-5.2:free")?.id).toBe("z-ai/glm-5.2:free");
+	});
+
+	// Regression: Copilot derives the display name "Glm 5.2 Free" from the
+	// identifier z-ai/glm-5.2:free (state DB stores no provider segment, so
+	// the exact detector misses). The derived name must resolve to the FREE
+	// variant — not the paid sibling that shares its id prefix, and not the
+	// openrouter/free router whose generic last segment used to hijack ties.
+	it("resolves the derived free-variant name to the free model, not its paid sibling", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		const glmPaid = makeModel("z-ai/glm-5.2", "Z.ai: GLM 5.2");
+		const glmFree = { ...makeModel("z-ai/glm-5.2:free", "Z.ai: GLM 5.2 (free)", 0), isFree: true };
+		// Real catalog order: paid (75) < free (77) < router (191).
+		const catalog = [glmPaid, glmFree, router];
+
+		expect(findBestMatch(catalog, "Glm 5.2 Free")?.id).toBe("z-ai/glm-5.2:free");
+	});
+
+	it("resolves the marketplace listing name with a via qualifier to the free model", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		const glmPaid = makeModel("z-ai/glm-5.2", "Z.ai: GLM 5.2");
+		const glmFree = { ...makeModel("z-ai/glm-5.2:free", "Z.ai: GLM 5.2 (free)", 0), isFree: true };
+		const catalog = [glmPaid, glmFree, router];
+
+		expect(findBestMatch(catalog, "GLM 5.2 Free (via OpenRouter)")?.id).toBe("z-ai/glm-5.2:free");
+	});
+
+	it("still prefers the paid variant when the search name has no free marker", () => {
+		const router = makeModel("openrouter/free", "Free Models Router", 0);
+		const glmPaid = makeModel("z-ai/glm-5.2", "Z.ai: GLM 5.2");
+		const glmFree = { ...makeModel("z-ai/glm-5.2:free", "Z.ai: GLM 5.2 (free)", 0), isFree: true };
+		const catalog = [glmPaid, glmFree, router];
+
+		expect(findBestMatch(catalog, "GLM 5.2")?.id).toBe("z-ai/glm-5.2");
+	});
 });
 
 // ── toPerMillion / computeBlendedRate ─────────────────────────

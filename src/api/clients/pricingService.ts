@@ -562,16 +562,18 @@ export function findBestMatch(
 		}
 	}
 
+	const normalizedLower = normalizeSeparators(lower);
 	let bestMatch: ModelPricingInfo | undefined;
 	let bestScore = 0;
+	let bestTiebreak = 0;
 
 	for (const m of models) {
 		const score = scoreModelMatch(m, lower);
-		if (score > bestScore) {
-			bestScore = score;
-			bestMatch = m;
-			if (score === 4) break; // exact name — can't beat this
-		}
+		if (!isBetterCandidate(score, bestScore, m.id, normalizedLower, bestTiebreak)) continue;
+		bestScore = score;
+		bestMatch = m;
+		bestTiebreak = score === 1 ? segmentTiebreak(m.id, normalizedLower) : 0;
+		if (score === 4) break; // exact name — can't beat this
 	}
 
 	if (bestMatch) {
@@ -585,14 +587,46 @@ export function findBestMatch(
 	return bestMatch;
 }
 
+/** True when a candidate outranks the current best (higher tier, or equal-tier tiebreak). */
+function isBetterCandidate(
+	score: number,
+	bestScore: number,
+	modelId: string,
+	normalizedLower: string,
+	bestTiebreak: number,
+): boolean {
+	if (score === 0) return false;
+	if (score !== bestScore) return score > bestScore;
+	// Tiebreak only refines the weakest tier; higher tiers keep first-match-wins.
+	return score === 1 && segmentTiebreak(modelId, normalizedLower) > bestTiebreak;
+}
+
 /** Score a single model against the search string (4 = exact name, 0 = no match). */
 function scoreModelMatch(m: ModelPricingInfo, lower: string): number {
 	if (m.name.toLowerCase() === lower) return 4;
 	if (m.name.toLowerCase().includes(lower)) return 3;
 	if (m.id.toLowerCase().includes(lower)) return 2;
-	const lastSeg = m.id.split("/").pop()?.toLowerCase() ?? "";
-	if (lastSeg === lower || lastSeg.includes(lower) || lower.includes(lastSeg)) return 1;
+	const lastSeg = normalizeSeparators((m.id.split("/").pop() ?? "").toLowerCase());
+	const normalizedLower = normalizeSeparators(lower);
+	if (lastSeg === normalizedLower) return 1;
+	// The segment must be distinctive relative to the search text so generic
+	// segments like "free" (openrouter/free router) don't hijack matches.
+	if (normalizedLower.includes(lastSeg) && lastSeg.length > normalizedLower.length * 0.4) {
+		return 1;
+	}
 	return 0;
+}
+
+/** Collapse id-style separators so ":free" and "free" compare equal. */
+function normalizeSeparators(value: string): string {
+	return value.replace(/[-:_.]+/g, " ").trim();
+}
+
+/** Rank a candidate within the last-segment tier: exact equality first, then specificity. */
+function segmentTiebreak(modelId: string, normalizedLower: string): number {
+	const lastSeg = normalizeSeparators((modelId.split("/").pop() ?? "").toLowerCase());
+	if (lastSeg === normalizedLower) return Number.MAX_SAFE_INTEGER;
+	return lastSeg.length;
 }
 
 // -- internal helpers --
