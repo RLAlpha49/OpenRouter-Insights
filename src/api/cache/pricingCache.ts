@@ -40,6 +40,7 @@ const MODEL_DEFAULTS: Partial<ModelPricingInfo> = {
 	topProviderName: "",
 	inputModalities: [] as string[],
 	outputModalities: [] as string[],
+	providerOverrideApplied: false,
 };
 
 /**

@@ -7,6 +7,7 @@ export type EndpointAuth = "none" | "apiKey" | "managementKey";
 
 export type EndpointId =
 	| "models.list"
+	| "models.endpoints"
 	| "keys.current"
 	| "keys.list"
 	| "credits.get"
@@ -18,6 +19,7 @@ export type EndpointId =
 
 export interface EndpointRequestMap {
 	"models.list": undefined;
+	"models.endpoints": { model: string };
 	"keys.current": undefined;
 	"keys.list": undefined;
 	"credits.get": undefined;
@@ -75,6 +77,19 @@ export const OPENROUTER_ENDPOINTS = [
 		capability: "pricing",
 		responseLimitBytes: DEFAULT_RESPONSE_LIMIT_BYTES,
 		requestBuilder: () => buildNoBodyRequest("models.list"),
+	},
+	{
+		id: "models.endpoints",
+		method: "GET",
+		path: "/api/v1/models/{model}/endpoints",
+		auth: "none",
+		decoder: "endpoints",
+		retry: "transient",
+		timeoutMs: API_TIMEOUTS_MS.models,
+		docsUrl: "https://openrouter.ai/docs/api-reference/models/list-model-endpoints",
+		capability: "pricing",
+		responseLimitBytes: DEFAULT_RESPONSE_LIMIT_BYTES,
+		requestBuilder: (input) => buildModelEndpointsRequest(input as { model: string }),
 	},
 	{
 		id: "keys.current",
@@ -316,10 +331,30 @@ export function buildAnalyticsRequest(input: {
 }
 
 function buildNoBodyRequest(
-	id: Exclude<EndpointId, "analytics.query" | "keys.create" | "keys.update" | "keys.delete">,
+	id: Exclude<
+		EndpointId,
+		"analytics.query" | "keys.create" | "keys.update" | "keys.delete" | "models.endpoints"
+	>,
 ): EndpointRequestDescriptor {
 	const endpoint = getEndpointContract(id);
 	return { method: endpoint.method, path: endpoint.path };
+}
+
+/**
+ * Model IDs must appear unencoded in the endpoints path — the API rejects
+ * %2F. The strict character allowlist plus dot-segment rejection keeps the
+ * raw slash safe (no path traversal).
+ */
+const MODEL_ID_PATTERN = /^(?!\.)(?!.*\/\.)(?!.*\.\.)[A-Za-z0-9._:-]+\/[A-Za-z0-9._:-]+$/;
+
+export function buildModelEndpointsRequest(input: { model: string }): EndpointRequestDescriptor {
+	if (!MODEL_ID_PATTERN.test(input.model)) {
+		throw new Error(`Invalid model ID: "${input.model}"`);
+	}
+	return {
+		method: getEndpointContract("models.endpoints").method,
+		path: `/api/v1/models/${input.model}/endpoints`,
+	};
 }
 
 export function buildKeyManagementRequest(

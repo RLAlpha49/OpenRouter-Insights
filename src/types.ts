@@ -80,6 +80,39 @@ export interface OpenRouterModelsResponse {
 	data: OpenRouterModel[];
 }
 
+/**
+ * One provider endpoint from GET /api/v1/models/{author}/{slug}/endpoints.
+ * @see https://openrouter.ai/docs/api-reference/models/list-model-endpoints
+ */
+export interface OpenRouterModelEndpoint {
+	name?: string;
+	model_id?: string;
+	model_name?: string;
+	provider_name?: string;
+	tag?: string;
+	context_length?: number;
+	pricing?: Partial<OpenRouterPricing> & { discount?: number };
+	supported_parameters?: string[];
+	/** 0 = active; negative values indicate degraded/deprecated endpoints. */
+	status?: number;
+	uptime_last_30m?: number | null;
+	uptime_last_5m?: number | null;
+	uptime_last_1d?: number | null;
+	latency_last_30m?: number | null;
+	throughput_last_30m?: number | null;
+	quantization?: string;
+	max_completion_tokens?: number | null;
+	max_prompt_tokens?: number | null;
+}
+
+/** Response from GET /api/v1/models/{author}/{slug}/endpoints. */
+export interface OpenRouterModelEndpointsResponse {
+	id: string;
+	name: string;
+	description?: string;
+	endpoints: OpenRouterModelEndpoint[];
+}
+
 /** Normalised pricing in USD per 1M tokens (for display). */
 export interface DisplayPricing {
 	prompt: number;
@@ -152,6 +185,8 @@ export interface ModelPricingInfo {
 	outputModalities?: string[];
 	/** Whether OpenRouter reports that the model is ready for production use. */
 	isReady?: boolean;
+	/** True when perMillion/blendedRate were overridden by the provider-sort routing pass. */
+	providerOverrideApplied?: boolean;
 }
 
 /** Safe response-contract health retained at domain boundaries. */

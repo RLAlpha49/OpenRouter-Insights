@@ -6,6 +6,7 @@ import {
 	decodeEndpointResponse,
 	decodeKeyResponse,
 	decodeKeysResponse,
+	decodeModelEndpointsResponse,
 	decodeModelsResponse,
 } from "../../api/contractDecoders";
 
@@ -218,5 +219,69 @@ describe("OpenRouter contract decoders", () => {
 		expect(
 			decodeKeysResponse({ data: [{ hash: "a", label: "A", disabled: false }, null] }).status,
 		).toBe("partial");
+	});
+});
+
+describe("decodeModelEndpointsResponse", () => {
+	const validEndpoint = {
+		name: "DeepInfra | deepseek/deepseek-chat-v3.1",
+		provider_name: "DeepInfra",
+		tag: "deepinfra",
+		context_length: 128000,
+		pricing: { prompt: "0.00000025", completion: "0.00000095", discount: 0 },
+		status: 0,
+		uptime_last_30m: 99.98,
+		latency_last_30m: null,
+		throughput_last_30m: null,
+		quantization: "fp8",
+	};
+	const validBody = {
+		data: {
+			id: "deepseek/deepseek-chat-v3.1",
+			name: "DeepSeek: DeepSeek V3.1",
+			endpoints: [validEndpoint],
+		},
+	};
+
+	it("decodes a valid envelope and normalizes pricing numbers", () => {
+		const r = decodeModelEndpointsResponse(validBody);
+		expect(r.status).toBe("valid");
+		expect(r.value?.id).toBe("deepseek/deepseek-chat-v3.1");
+		expect(r.value?.name).toBe("DeepSeek: DeepSeek V3.1");
+		expect(r.value?.endpoints).toHaveLength(1);
+		expect(r.value?.endpoints[0].pricing).toMatchObject({
+			prompt: 0.00000025,
+			completion: 0.00000095,
+		});
+	});
+
+	it("drops endpoints missing provider or pricing", () => {
+		const body = {
+			data: {
+				id: "x/y",
+				name: "X",
+				endpoints: [
+					validEndpoint,
+					{ provider_name: "NoPricing", status: 0 },
+					{ pricing: { prompt: "1", completion: "1" }, status: 0 },
+				],
+			},
+		};
+		const r = decodeModelEndpointsResponse(body);
+		expect(r.status).toBe("partial");
+		expect(r.value?.endpoints).toHaveLength(1);
+	});
+
+	it("rejects a missing data envelope", () => {
+		expect(decodeModelEndpointsResponse({}).status).toBe("invalid");
+		expect(decodeModelEndpointsResponse(null).status).toBe("invalid");
+	});
+
+	it("rejects when data.id, name, or endpoints array is absent", () => {
+		expect(decodeModelEndpointsResponse({ data: { name: "X" } }).status).toBe("invalid");
+		expect(decodeModelEndpointsResponse({ data: { id: "x/y" } }).status).toBe("invalid");
+		expect(
+			decodeModelEndpointsResponse({ data: { id: "x/y", name: "X", endpoints: "nope" } }).status,
+		).toBe("invalid");
 	});
 });

@@ -61,10 +61,18 @@ export interface DecodedAnalyticsResponse {
 	metadata?: { queryTimeMs?: number; rowCount?: number; truncated?: boolean };
 }
 
+/** Normalized per-model endpoints envelope consumed by the provider-sort service. */
+export interface DecodedEndpointsResponse {
+	id: string;
+	name: string;
+	endpoints: Record<string, unknown>[];
+}
+
 export type DecodeFunction<T> = (_input: unknown) => DecodeResult<T>;
 
 export interface EndpointResponseMap {
 	"models.list": DecodedModelsResponse;
+	"models.endpoints": DecodedEndpointsResponse;
 	"keys.current": OpenRouterKeyResponse;
 	"keys.list": OpenRouterKeysResponse;
 	"credits.get": OpenRouterCreditsResponse;
@@ -77,6 +85,7 @@ export interface EndpointResponseMap {
 
 const ENDPOINT_DECODERS = {
 	models: decodeModelsResponse,
+	endpoints: decodeModelEndpointsResponse,
 	key: decodeKeyResponse,
 	keys: decodeKeysResponse,
 	credits: decodeCreditsResponse,
@@ -85,10 +94,7 @@ const ENDPOINT_DECODERS = {
 	createKey: decodeCreateKeyResponse,
 	updateKey: decodeUpdateKeyResponse,
 	deleteKey: decodeDeleteKeyResponse,
-} satisfies Record<
-	Exclude<import("./endpoint/endpointCatalog").EndpointDecoder, "endpoints">,
-	DecodeFunction<unknown>
->;
+} satisfies Record<import("./endpoint/endpointCatalog").EndpointDecoder, DecodeFunction<unknown>>;
 
 function record(input: unknown): Record<string, unknown> | undefined {
 	return typeof input === "object" && input !== null && !Array.isArray(input)
@@ -179,6 +185,50 @@ export function decodeModelsResponse(input: unknown): DecodeResult<DecodedModels
 		{ data, links: next ? { next } : undefined },
 		issues,
 	);
+}
+
+function decodeEndpointEntry(input: unknown): Record<string, unknown> | undefined {
+	const item = record(input);
+	if (!item) return undefined;
+	if (!stringValue(item.provider_name)) return undefined;
+	const pricing = record(item.pricing);
+	if (!pricing) return undefined;
+	const prompt = numberValue(pricing.prompt);
+	const completion = numberValue(pricing.completion);
+	if (prompt === undefined || completion === undefined) return undefined;
+	return { ...item, pricing: { ...pricing, prompt, completion } };
+}
+
+export function decodeModelEndpointsResponse(
+	input: unknown,
+): DecodeResult<DecodedEndpointsResponse> {
+	const body = record(input);
+	const data = record(body?.data);
+	if (!data) {
+		return result<DecodedEndpointsResponse>("invalid", undefined, [
+			{ path: "data", message: "Expected an object" },
+		]);
+	}
+	const id = stringValue(data.id);
+	const name = stringValue(data.name);
+	if (!id || !name || !Array.isArray(data.endpoints)) {
+		return result<DecodedEndpointsResponse>("invalid", undefined, [
+			{ path: "data", message: "Missing id, name, or endpoints array" },
+		]);
+	}
+	const issues: DecodeIssue[] = [];
+	const endpoints: Record<string, unknown>[] = [];
+	data.endpoints.forEach((item, index) => {
+		const decoded = decodeEndpointEntry(item);
+		if (decoded) endpoints.push(decoded);
+		else {
+			issues.push({
+				path: `data.endpoints[${index}]`,
+				message: "Missing provider_name or pricing",
+			});
+		}
+	});
+	return result(collectionStatus(issues, 0), { id, name, endpoints }, issues);
 }
 
 export function decodeAnalyticsResponse(input: unknown): DecodeResult<DecodedAnalyticsResponse> {

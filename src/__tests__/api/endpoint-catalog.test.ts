@@ -6,6 +6,7 @@ import {
 	buildAnalyticsRequest,
 	buildEndpointRequest,
 	buildKeyManagementRequest,
+	buildModelEndpointsRequest,
 	buildModelMetricsQuery,
 	getEndpointContract,
 	getEndpointRetryPolicy,
@@ -108,5 +109,34 @@ describe("OpenRouter endpoint catalog", () => {
 
 	it("lets a service tighten a transient budget but clamps the attempt floor", () => {
 		expect(getEndpointRetryPolicy("keys.current", { baseDelayMs: -1 }).baseDelayMs).toBe(0);
+	});
+});
+
+describe("models.endpoints contract", () => {
+	it("builds a request with the raw model ID path segment", () => {
+		expect(buildModelEndpointsRequest({ model: "openai/gpt-4o" })).toEqual({
+			method: "GET",
+			path: "/api/v1/models/openai/gpt-4o/endpoints",
+		});
+	});
+
+	it("accepts variant slugs with colons", () => {
+		expect(buildModelEndpointsRequest({ model: "a/b:free" }).path).toBe(
+			"/api/v1/models/a/b:free/endpoints",
+		);
+	});
+
+	it("rejects traversal and malformed ids", () => {
+		expect(() => buildModelEndpointsRequest({ model: "a/b/c" })).toThrow();
+		expect(() => buildModelEndpointsRequest({ model: "" })).toThrow();
+		expect(() => buildModelEndpointsRequest({ model: "../etc" })).toThrow();
+	});
+
+	it("registers the endpoint with none auth and the endpoints decoder", () => {
+		const c = getEndpointContract("models.endpoints");
+		expect(c.auth).toBe("none");
+		expect(c.decoder).toBe("endpoints");
+		expect(c.capability).toBe("pricing");
+		expect(c.retry).toBe("transient");
 	});
 });
