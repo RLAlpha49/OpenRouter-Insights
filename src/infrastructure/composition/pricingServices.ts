@@ -5,6 +5,7 @@
 
 import type { IPricingCache } from "../../api/cache/pricingStore";
 import { PricingFetcher } from "../../api/clients/pricingService";
+import { ProviderSortService } from "../../api/clients/providerSortService";
 import type { HttpClient } from "../../api/transport/httpClient";
 import { StatusBarView } from "../../ui/status/statusBarView";
 import { createStatusBarPresenter } from "../../ui/status/statusBarPresenter";
@@ -55,6 +56,7 @@ export function createPricingServices(deps: PricingServiceDependencies): Pricing
 		deps.eventBus,
 		deps.diagnostics,
 		deps.refreshPresenter ?? createPricingRefreshPresenter(),
+		new ProviderSortService(log),
 	);
 	const statusBarUseCase = new StatusBarUpdateUseCase(
 		deps.cache,

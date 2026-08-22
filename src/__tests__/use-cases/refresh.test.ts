@@ -123,3 +123,164 @@ describe("RefreshUseCase", () => {
 		expect(failures[0].error.length).toBeLessThanOrEqual(240);
 	});
 });
+
+describe("RefreshUseCase provider sort", () => {
+	function makeTrackedCacheData(): CachedPricingData {
+		const base = makeCacheData();
+		base.models = [
+			{
+				id: "vendor/model",
+				name: "Vendor: Model",
+				blendedRate: 5,
+				contextLength: 128000,
+				contextLengthFormatted: "128,000",
+				maxOutputLength: 4096,
+				created: 0,
+				isDeprecated: false,
+				deprecationDate: "",
+				isFree: false,
+				modality: "text",
+				description: "",
+				supportedParameters: [],
+				supportedFeatures: [],
+				topProviderIsModerated: false,
+				topProviderContextLength: 0,
+				topProviderMaxCompletionTokens: 0,
+				quantization: "",
+				detailsLink: "",
+				discountToUser: 0,
+				topProviderId: "",
+				topProviderName: "",
+				perMillion: {
+					prompt: 5,
+					completion: 5,
+					image: 0,
+					request: 0,
+					inputCacheRead: 0,
+					inputCacheWrite: 0,
+					webSearch: 0,
+					internalReasoning: 0,
+				},
+			} as any,
+		];
+		return base;
+	}
+
+	function makeFetcher(): { fetchModelPricing: ReturnType<typeof vi.fn> } {
+		return { fetchModelPricing: vi.fn().mockResolvedValue(makeTrackedCacheData()) };
+	}
+
+	function makeOverride(): Record<string, unknown> {
+		return {
+			perMillion: {
+				prompt: 0.25,
+				completion: 0.95,
+				image: 0,
+				request: 0,
+				inputCacheRead: 0,
+				inputCacheWrite: 0,
+				webSearch: 0,
+				internalReasoning: 0,
+			},
+			blendedRate: 1.05,
+			quantization: "",
+			topProviderId: "cheap",
+			topProviderName: "Cheap",
+			topProviderContextLength: 0,
+			topProviderMaxCompletionTokens: 0,
+		};
+	}
+
+	it("applies provider override when sort=price and model is favorited", async () => {
+		const cache = createFakeCache();
+		const config = createFakeReadonlyConfig({
+			providerSort: "price",
+			favoriteModels: ["vendor/model"],
+		});
+		const fetcher = makeFetcher();
+		const providerSort = {
+			resolveOverrides: vi.fn().mockResolvedValue(new Map([["vendor/model", makeOverride()]])),
+		};
+		const useCase = new RefreshUseCase(
+			cache,
+			config,
+			fetcher as any,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			providerSort as any,
+		);
+		await useCase.execute();
+		expect(providerSort.resolveOverrides).toHaveBeenCalled();
+		const stored = (cache.set as ReturnType<typeof vi.fn>).mock.calls[0][0] as CachedPricingData;
+		expect(stored.models[0].perMillion.prompt).toBe(0.25);
+		expect(stored.models[0].providerOverrideApplied).toBe(true);
+	});
+
+	it("does not call provider sort service when sort=default", async () => {
+		const cache = createFakeCache();
+		const config = createFakeReadonlyConfig({
+			providerSort: "default",
+			favoriteModels: ["vendor/model"],
+		});
+		const fetcher = makeFetcher();
+		const providerSort = { resolveOverrides: vi.fn() };
+		const useCase = new RefreshUseCase(
+			cache,
+			config,
+			fetcher as any,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			providerSort as any,
+		);
+		await useCase.execute();
+		expect(providerSort.resolveOverrides).not.toHaveBeenCalled();
+	});
+
+	it("refresh succeeds even when provider sort service throws", async () => {
+		const cache = createFakeCache();
+		const config = createFakeReadonlyConfig({
+			providerSort: "price",
+			favoriteModels: ["vendor/model"],
+		});
+		const fetcher = makeFetcher();
+		const providerSort = { resolveOverrides: vi.fn().mockRejectedValue(new Error("boom")) };
+		const useCase = new RefreshUseCase(
+			cache,
+			config,
+			fetcher as any,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			providerSort as any,
+		);
+		await expect(useCase.execute()).resolves.toBeUndefined();
+		expect(cache.set).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores favorites not present in the fetched catalog", async () => {
+		const cache = createFakeCache();
+		const config = createFakeReadonlyConfig({
+			providerSort: "price",
+			favoriteModels: ["absent/model"],
+		});
+		const fetcher = makeFetcher();
+		const providerSort = { resolveOverrides: vi.fn() };
+		const useCase = new RefreshUseCase(
+			cache,
+			config,
+			fetcher as any,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			providerSort as any,
+		);
+		await useCase.execute();
+		expect(providerSort.resolveOverrides).not.toHaveBeenCalled();
+	});
+});

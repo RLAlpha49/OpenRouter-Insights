@@ -9,14 +9,18 @@
 
 import type { IPricingStore } from "../api/cache/pricingStore";
 import { PricingFetcher } from "../api/clients/pricingService";
+import { ProviderSortService } from "../api/clients/providerSortService";
+import { resolveModelId } from "../models/modelResolver";
 import { log, formatError, formatErrorBrief } from "../infrastructure/logger";
 import type { ReadonlyConfig } from "../infrastructure/config";
 import type { RefreshContext } from "../infrastructure/refreshContext";
 import { isCancellationError } from "../api/transport/fetchHelpers";
 import type { HttpClient } from "../api/transport/httpClient";
+import { defaultHttpClient } from "../api/transport/httpClient";
 import type { EventBus } from "../infrastructure/eventBus";
 import type { RuntimeDiagnostics } from "../infrastructure/runtimeDiagnostics";
 import type { PricingRefreshPresenter } from "./ports";
+import type { CachedPricingData } from "../types";
 
 export class RefreshUseCase {
 	constructor(
@@ -27,6 +31,7 @@ export class RefreshUseCase {
 		private readonly _eventBus?: EventBus,
 		private readonly _diagnostics?: RuntimeDiagnostics,
 		private readonly _presenter?: PricingRefreshPresenter,
+		private readonly _providerSort: ProviderSortService = new ProviderSortService(log),
 	) {}
 
 	private _pending: Promise<void> | undefined;
@@ -73,6 +78,7 @@ export class RefreshUseCase {
 			}
 			await this._cache.set(data);
 			log.info("Pricing refreshed:", data.models.length, "models, cache now", this._cache.age());
+			await this._applyProviderSortOverrides(data, ctx);
 			this._presenter?.pricingUpdated(data.models.length);
 		} catch (err) {
 			// Cancellation is non-error control flow — do not surface it.
@@ -100,5 +106,64 @@ export class RefreshUseCase {
 		}
 
 		log.debug("RefreshUseCase._executeInternal: refresh cycle complete");
+	}
+
+	/**
+	 * Apply provider-sort pricing overrides to tracked models (selected model
+	 * + favorites) after the catalog is persisted. Failures degrade silently
+	 * to catalog pricing — they must never fail the refresh cycle.
+	 */
+	private async _applyProviderSortOverrides(
+		data: CachedPricingData,
+		ctx?: RefreshContext,
+	): Promise<void> {
+		const sort = this._config.providerSort;
+		if (sort === "default") return;
+		try {
+			const tracked = new Set<string>();
+			const selectedId = await this._resolveSelectedModelId(data);
+			if (selectedId && data.models.some((m) => m.id === selectedId)) {
+				tracked.add(selectedId);
+			}
+			for (const id of this._config.favoriteModels ?? []) {
+				if (data.models.some((m) => m.id === id)) tracked.add(id);
+			}
+			if (tracked.size === 0) return;
+
+			ctx?.throwIfCancelled();
+			const overrides = await this._providerSort.resolveOverrides(
+				[...tracked],
+				sort,
+				this._client ?? defaultHttpClient,
+				this._config.apiBaseUrl,
+				this._config.blendWeights,
+				ctx?.signal,
+			);
+			if (overrides.size === 0) return;
+
+			for (const model of data.models) {
+				const o = overrides.get(model.id);
+				if (!o) continue;
+				Object.assign(model, o, { providerOverrideApplied: true });
+			}
+			await this._cache.set(data);
+			log.info(`ProviderSort: applied ${overrides.size} provider pricing override(s)`);
+		} catch (err) {
+			// Cancellation is control flow; everything else degrades to catalog pricing.
+			if (!isCancellationError(err, ctx?.signal)) {
+				log.warn("ProviderSort: override pass skipped —", formatErrorBrief(err));
+			}
+		}
+	}
+
+	/** Resolve the tracked model ID via config override or the detector pipeline. */
+	private async _resolveSelectedModelId(data: CachedPricingData): Promise<string | undefined> {
+		if (this._config.selectedModelId) return this._config.selectedModelId;
+		try {
+			const resolved = await resolveModelId(new Map(data.models.map((m) => [m.id, m])));
+			return resolved?.id;
+		} catch {
+			return undefined;
+		}
 	}
 }
