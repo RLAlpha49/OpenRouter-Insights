@@ -527,7 +527,7 @@
 		"semantic-release": "^25.0.9",
 		"typescript": "npm:@typescript/typescript6@^6.0.2",
 		"typescript-eslint": "^8.67.0",
-		"vitest": "^4.1.10"
+		"vitest": "^5.0.5"
 	},
 	"overrides": {
 		"js-yaml": "^4.3.1",
