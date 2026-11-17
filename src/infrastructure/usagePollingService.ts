@@ -53,7 +53,7 @@ export class UsagePollingService implements vscode.Disposable {
 
 		const operation = Promise.resolve(this._onTick());
 		this._pending = operation.finally(() => {
-			if (this._pending === operation) this._pending = undefined;
+			this._pending = undefined;
 		});
 		return this._pending;
 	}
